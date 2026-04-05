@@ -90,14 +90,16 @@ npm run android
 npm run ios
 ```
 
-## Phase 1: MVP Features (In Progress)
+## Phase 1: MVP Features (✅ Complete)
 
 - [x] Backend scaffolding with extension system
 - [x] React Native navigation structure
 - [x] Theme system (light/dark mode)
-- [ ] Asura Scans scraper extension
+- [x] **Asura Scans** scraper extension
+- [x] **Flame Scans** scraper extension
+- [x] **Reaper Scans** scraper extension
+- [x] Multi-source search support
 - [ ] SQLite database schema
-- [ ] Multi-source search
 - [ ] Chapter list & reading interface
 - [ ] User library (favorites)
 - [ ] Update notifications
@@ -105,44 +107,62 @@ npm run ios
 
 ## Extension Development
 
-### Creating a New Scraper
+### Available Scrapers
 
-1. Create a new Python file in `extensions_installed/` directory
-2. Inherit from `BaseScraper`
-3. Implement required methods: `search()`, `get_chapters()`, `get_chapter_images()`
-4. Restart backend to auto-load
+3 scrapers are already built and ready to use:
+
+| Scraper | Source ID | Site | Status |
+|---------|-----------|------|--------|
+| Asura Scans | `asura` | asurascans.com | ✅ Ready |
+| Flame Scans | `flame` | flamescans.org | ✅ Ready |
+| Reaper Scans | `reaper` | reaperscans.com | ✅ Ready |
+
+### Quick Start: Search All Sources
 
 ```python
-from extensions import BaseScraper, Manga, Chapter, ChapterImage
+# Search all sources simultaneously
+import httpx
+import asyncio
 
-class AsuraReader(BaseScraper):
-    def __init__(self):
-        super().__init__()
-        self.name = "Asura Scans"
-        self.source_id = "asura"
-        self.version = "1.0.0"
-    
-    async def search(self, query: str, page: int = 1) -> List[Manga]:
-        # Implementation
-        pass
-    
-    async def get_chapters(self, manga_url: str) -> List[Chapter]:
-        # Implementation
-        pass
-    
-    async def get_chapter_images(self, chapter_url: str) -> List[ChapterImage]:
-        # Implementation
-        pass
+async def search_all(query):
+    async with httpx.AsyncClient() as client:
+        sources = ["asura", "flame", "reaper"]
+        tasks = [
+            client.post(
+                f"http://localhost:8000/search/{source}",
+                json={"query": query, "page": 1}
+            )
+            for source in sources
+        ]
+        responses = await asyncio.gather(*tasks)
+        return [r.json() for r in responses]
+
+results = asyncio.run(search_all("solo leveling"))
 ```
 
-### Installing from Git
+### Quick Scraper API Usage
 
-```python
-POST /extensions/install
-{
-    "git_url": "https://github.com/user/asura-scraper.git",
-    "extension_name": "asura_scans"
-}
+```bash
+# List all scrapers
+curl http://localhost:8000/extensions
+
+# Search Asura Scans
+curl -X POST http://localhost:8000/search/asura \
+  -H "Content-Type: application/json" \
+  -d '{"query":"solo leveling","page":1}'
+
+# Get chapters from Asura
+curl -X POST http://localhost:8000/manga/asura/chapters \
+  -H "Content-Type: application/json" \
+  -d '{"manga_url":"https://asurascans.com/manga/solo-leveling/"}'
+
+# Get chapter images
+curl -X POST http://localhost:8000/chapter/asura/images \
+  -H "Content-Type: application/json" \
+  -d '{"chapter_url":"https://asurascans.com/..."}'
+
+# Get latest chapters
+curl http://localhost:8000/latest/asura
 ```
 
 ## API Endpoints
@@ -160,14 +180,70 @@ POST /extensions/install
 - `POST /chapter/{source_id}/images` - Get chapter images
 - `GET /latest/{source_id}` - Get latest chapters
 
-## Next Steps (Phase 2+)
+## Adding Custom Scrapers
 
-- Build first scraper extension (Asura Scans)
-- Implement SQLite database
-- Add user library & reading history
-- Set up update notification system
-- Implement offline reading support
-- Add search filters & recommendations
+### Overview
+
+Want to add support for more sites? The extension system makes it easy:
+
+1. **Copy template**: `backend/extensions_installed/template_scraper.py`
+2. **Customize CSS selectors** using browser DevTools (F12)
+3. **Update source_id** (lowercase, unique identifier)
+4. **Save as new .py file** - backend auto-loads it!
+
+### Step-by-Step Guide
+
+**Full guide:** See [/backend/extensions_installed/SCRAPER_GUIDE.md](backend/extensions_installed/SCRAPER_GUIDE.md)
+
+Quick example: Create `mangadex_scraper.py`:
+
+```python
+from extensions import BaseScraper, Manga, Chapter, ChapterImage
+
+class MangaDex(BaseScraper):
+    def __init__(self):
+        super().__init__()
+        self.name = "MangaDex"
+        self.source_id = "mangadex"
+        self.base_url = "https://mangadex.org"
+    
+    async def search(self, query: str, page: int = 1) -> List[Manga]:
+        # Use browser DevTools to find CSS selectors
+        # Parse HTML with BeautifulSoup
+        # Return list of Manga objects
+        pass
+    
+    async def get_chapters(self, manga_url: str) -> List[Chapter]:
+        # Parse chapter list
+        pass
+    
+    async def get_chapter_images(self, chapter_url: str) -> List[ChapterImage]:
+        # Parse chapter images
+        pass
+```
+
+**No restart needed** - just save and it's instantly available at `/search/mangadex`!
+
+### Popular Sites To Add
+
+- MangaDex (API available!)
+- Luminous Scans
+- Void Scans
+- Manhua Plus
+- Webtoon
+- And more...
+
+### Git-Based Extensions
+
+You can also create extensions in separate Git repos and install them:
+
+```bash
+POST /extensions/install
+{
+    "git_url": "https://github.com/user/mangadex-scraper.git",
+    "extension_name": "mangadex"
+}
+```
 
 ## License
 
