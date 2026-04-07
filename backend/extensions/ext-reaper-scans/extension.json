@@ -1,0 +1,9 @@
+{
+  "name": "Reaper Scans",
+  "version": "1.0.0",
+  "base_url": "https://reaperscans.com",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "ReaperScansScraper"
+}

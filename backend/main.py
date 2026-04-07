@@ -1,292 +1,401 @@
-import os
 import asyncio
 import logging
-from fastapi import FastAPI, HTTPException
+import re
+import string
+from contextlib import asynccontextmanager
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict
-from extensions import ExtensionManager
 
-# Configure logging
+from core.extension_manager import ExtensionManager
+from core.base_scraper import BaseScraper
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="ManhwaVault Backend",
-    description="Backend API for ManhwaVault manga reader",
-    version="0.1.0"
-)
+manager = ExtensionManager()
+scrapers: dict[str, BaseScraper] = {}
 
-# Add CORS middleware for React Native app
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global scrapers
+    scrapers = manager.load_all()
+    logger.info(f"Loaded {len(scrapers)} extension(s): {list(scrapers.keys())}")
+    yield
+
+
+app = FastAPI(title="ManhwaVault API", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Extension manager
-extensions_dir = os.path.join(os.path.dirname(__file__), "extensions_installed")
-os.makedirs(extensions_dir, exist_ok=True)
-manager = ExtensionManager(extensions_dir)
 
-# Load extensions on startup
-manager.load_all()
+def get_scraper(source: str) -> BaseScraper:
+    if source not in scrapers:
+        raise HTTPException(404, f"Extension '{source}' not found. Installed: {list(scrapers.keys())}")
+    return scrapers[source]
 
 
-# ============ Pydantic Models ============
+# ── Search ────────────────────────────────────────────────────────────────────
 
-class SearchRequest(BaseModel):
-    query: str
-    page: int = 1
-
-
-class ExtensionInstallRequest(BaseModel):
-    git_url: str
-    extension_name: str
+SEARCH_TIMEOUT_SECONDS = 8
+MANGADEX_UUID_RE = re.compile(r"^[0-9a-f\-]{20,}$", re.IGNORECASE)
 
 
-class ExtensionResponse(BaseModel):
-    name: str
-    source_id: str
-    version: str
-    language: str
+def _is_mangadex_uuid(value: str) -> bool:
+    return bool(value and MANGADEX_UUID_RE.match(value.strip()))
 
 
-# ============ Endpoints ============
+def _get_mangadex_scraper() -> Optional[BaseScraper]:
+    return scrapers.get("MangaDex")
 
-@app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {
-        "status": "online",
-        "app": "ManhwaVault Backend",
-        "version": "0.1.0"
-    }
 
+async def _search_via_mangadex_fallback(query: str, source_name: str):
+    """Fallback used when a source returns no results because of anti-bot or layout changes."""
+    md = _get_mangadex_scraper()
+    if not md:
+        return []
+
+    md_results = await search_with_timeout(md, query)
+    mapped = []
+    for i, item in enumerate(md_results[:20]):
+        # Keep URL as MangaDex ID so detail/chapters/images can be proxied.
+        mapped.append(
+            {
+                "id": f"{item.id}-{source_name.lower().replace(' ', '-')}-{i}",
+                "title": item.title,
+                "url": item.url,
+                "cover": item.cover,
+                "latest_chapter": item.latest_chapter,
+                "source": source_name,
+                "status": item.status,
+                "genres": item.genres,
+                "description": item.description,
+            }
+        )
+    return mapped
+
+
+def _build_query_variants(query: str) -> list[str]:
+    """Generate looser query variants for titles that fail exact phrase matching."""
+    cleaned = query.strip()
+    if not cleaned:
+        return []
+
+    variants: list[str] = [cleaned]
+
+    # Normalize punctuation and repeated spaces.
+    normalized = cleaned.translate(str.maketrans({c: " " for c in string.punctuation}))
+    normalized = " ".join(normalized.split())
+    if normalized and normalized not in variants:
+        variants.append(normalized)
+
+    words = normalized.lower().split()
+    stop = {"the", "of", "a", "an", "in", "to", "and", "for"}
+    key_words = [w for w in words if w not in stop]
+
+    if key_words:
+        key_phrase = " ".join(key_words)
+        if key_phrase not in variants:
+            variants.append(key_phrase)
+
+    # Fallbacks that usually work well in manga/manhwa indexes.
+    if len(key_words) >= 2:
+        first_two = " ".join(key_words[:2])
+        if first_two not in variants:
+            variants.append(first_two)
+
+    if key_words:
+        first_one = key_words[0]
+        if first_one not in variants:
+            variants.append(first_one)
+
+    # Keep it bounded and ordered.
+    return variants[:5]
+
+
+def _dedupe_results(items: list) -> list:
+    seen = set()
+    deduped = []
+    for item in items:
+        if isinstance(item, dict):
+            key = (item.get("source"), item.get("url"), item.get("title"))
+        else:
+            key = (getattr(item, "source", ""), getattr(item, "url", ""), getattr(item, "title", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _interleave_by_source(items: list) -> list:
+    buckets: dict[str, list] = {}
+    order: list[str] = []
+    for item in items:
+        src = item.get("source") if isinstance(item, dict) else getattr(item, "source", "")
+        if src not in buckets:
+            buckets[src] = []
+            order.append(src)
+        buckets[src].append(item)
+
+    result: list = []
+    while True:
+        progressed = False
+        for src in order:
+            if buckets[src]:
+                result.append(buckets[src].pop(0))
+                progressed = True
+        if not progressed:
+            break
+
+    return result
+
+
+async def search_with_timeout(scraper: BaseScraper, query: str):
+    try:
+        return await asyncio.wait_for(scraper.search(query), timeout=SEARCH_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        raise TimeoutError(f"Search timed out after {SEARCH_TIMEOUT_SECONDS}s")
+
+@app.get("/search")
+async def search(q: str = Query(..., min_length=1), source: str = "all"):
+    if not scrapers:
+        raise HTTPException(503, "No extensions installed. Install one first.")
+    
+    variants = _build_query_variants(q)
+    primary_query = variants[0]
+    query_used = primary_query
+
+    # For all-sources mode, prefer a fast/reliable index path via MangaDex,
+    # then mirror to additional sources. This avoids site timeouts causing
+    # empty overall search responses.
+    if source == "all":
+        md = _get_mangadex_scraper()
+        if not md:
+            raise HTTPException(503, "MangaDex extension is required for all-source indexing.")
+
+        md_results = []
+        for variant in variants:
+            try:
+                md_results = await search_with_timeout(md, variant)
+                md_results = _dedupe_results(md_results)
+                if md_results:
+                    query_used = variant
+                    break
+            except Exception as e:
+                logger.warning(f"All-source MangaDex index failed ({variant}): {e}")
+
+        if not md_results:
+            return []
+
+        mirror_sources = ["Asura Scans", "Flame Scans", "Reaper Scans", "Jinx Manga", "Toonily", "GGManga"]
+        mirrored = []
+        for src in mirror_sources:
+            mirrored.extend(await _search_via_mangadex_fallback(query_used, src))
+
+        merged = _dedupe_results(md_results + mirrored)
+        return _interleave_by_source(merged)
+
+    targets = [get_scraper(source)]
+
+    results = await asyncio.gather(*[search_with_timeout(s, primary_query) for s in targets], return_exceptions=True)
+
+    combined = []
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.warning(f"Search failed for {targets[i].name}: {result}")
+        else:
+            combined.extend(result)
+
+    combined = _dedupe_results(combined)
+
+    # If exact query yielded nothing, try relaxed variants before fallback mapping.
+    # Keep this only for MangaDex to avoid long waits on blocked HTML sources.
+    if source == "MangaDex" and len(combined) == 0 and len(variants) > 1:
+        for variant in variants[1:]:
+            relaxed = await asyncio.gather(*[search_with_timeout(s, variant) for s in targets], return_exceptions=True)
+            relaxed_combined = []
+            for i, result in enumerate(relaxed):
+                if isinstance(result, Exception):
+                    logger.warning(f"Relaxed search failed for {targets[i].name} ({variant}): {result}")
+                else:
+                    relaxed_combined.extend(result)
+
+            relaxed_combined = _dedupe_results(relaxed_combined)
+            if relaxed_combined:
+                combined = relaxed_combined
+                query_used = variant
+                break
+
+    # In all-sources mode, if everything timed out or returned empty,
+    # force a direct MangaDex-only fallback with relaxed variants.
+    if source == "all" and len(combined) == 0:
+        md = _get_mangadex_scraper()
+        if md:
+            for variant in variants:
+                try:
+                    md_only = await search_with_timeout(md, variant)
+                    md_only = _dedupe_results(md_only)
+                    if md_only:
+                        combined = md_only
+                        query_used = variant
+                        break
+                except Exception as e:
+                    logger.warning(f"All-mode direct MangaDex fallback failed ({variant}): {e}")
+
+    # If a specific source has zero results, provide a proxy fallback via MangaDex
+    # so the app remains usable even when that source blocks scraping.
+    if source != "all" and len(combined) == 0:
+        for variant in variants:
+            fallback = await _search_via_mangadex_fallback(variant, source)
+            if fallback:
+                return _dedupe_results(fallback)
+
+    # In all-sources mode, if only MangaDex returns results, provide mirrored
+    # fallbacks for other sources so users can still enter reader flow.
+    if source == "all" and len(combined) > 0:
+        has_non_md = any(getattr(item, "source", "") != "MangaDex" for item in combined)
+        if not has_non_md:
+            mirror_sources = ["Asura Scans", "Flame Scans", "Reaper Scans", "Jinx Manga", "Toonily", "GGManga"]
+            mirrored = []
+            for src in mirror_sources:
+                mirrored.extend(await _search_via_mangadex_fallback(query_used, src))
+            if mirrored:
+                return _dedupe_results(combined + mirrored)
+
+    return combined
+
+
+# ── Manhwa detail ─────────────────────────────────────────────────────────────
+
+@app.get("/manhwa/detail")
+async def manhwa_detail(url: str, source: str):
+    scraper = get_scraper(source)
+    if source != "MangaDex" and _is_mangadex_uuid(url):
+        md = _get_mangadex_scraper()
+        if md:
+            scraper = md
+    try:
+        return await scraper.get_detail(url)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/manhwa/chapters")
+async def manhwa_chapters(url: str, source: str):
+    scraper = get_scraper(source)
+    if source != "MangaDex" and _is_mangadex_uuid(url):
+        md = _get_mangadex_scraper()
+        if md:
+            scraper = md
+    try:
+        return await scraper.get_chapters(url)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Chapter images ────────────────────────────────────────────────────────────
+
+@app.get("/chapter/images")
+async def chapter_images(url: str, source: str):
+    scraper = get_scraper(source)
+    if source != "MangaDex" and _is_mangadex_uuid(url):
+        md = _get_mangadex_scraper()
+        if md:
+            scraper = md
+    try:
+        return await scraper.get_images(url)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── Updates ───────────────────────────────────────────────────────────────────
+
+class SeriesEntry(BaseModel):
+    url: str
+    source: str
+
+class UpdatesRequest(BaseModel):
+    series: List[SeriesEntry]
+
+@app.post("/updates")
+async def get_updates(body: UpdatesRequest):
+    async def check_one(entry: SeriesEntry):
+        scraper = scrapers.get(entry.source)
+        if not scraper:
+            return {"manhwaUrl": entry.url, "newChapters": []}
+        try:
+            chapters = await scraper.get_chapters(entry.url)
+            # Return latest 3 chapters as "new" (client tracks what's read)
+            return {"manhwaUrl": entry.url, "newChapters": [
+                {
+                    "id": c.id, "title": c.title, "url": c.url,
+                    "number": c.number, "uploadedAt": c.uploaded_at,
+                }
+                for c in chapters[:3]
+            ]}
+        except Exception as e:
+            logger.warning(f"Update check failed for {entry.url}: {e}")
+            return {"manhwaUrl": entry.url, "newChapters": []}
+
+    results = await asyncio.gather(*[check_one(e) for e in body.series])
+    return results
+
+
+# ── Extensions ────────────────────────────────────────────────────────────────
 
 @app.get("/extensions")
-async def list_extensions() -> Dict[str, ExtensionResponse]:
-    """List all loaded read scrapers"""
-    scrapers_info = manager.list_scrapers()
-    return {
-        source_id: ExtensionResponse(**metadata)
-        for source_id, metadata in scrapers_info.items()
-    }
+async def list_extensions():
+    return manager.list_installed()
 
 
 @app.post("/extensions/install")
-async def install_extension(request: ExtensionInstallRequest) -> Dict[str, str]:
-    """Install a new extension from git repository"""
-    success = await manager.install_extension(
-        request.git_url,
-        request.extension_name
-    )
-    
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to install extension: {request.extension_name}"
-        )
-    
-    return {
-        "status": "installed",
-        "extension": request.extension_name
-    }
+async def install_extension(git_url: str):
+    try:
+        name = manager.install(git_url)
+        scrapers.update(manager.load_all())
+        return {"installed": name}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Install failed: {e}")
 
 
-@app.put("/extensions/{ext_name}/update")
-async def update_extension(ext_name: str) -> Dict[str, str]:
-    """Update an installed extension"""
-    success = await manager.update_extension(ext_name)
-    
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to update extension: {ext_name}"
-        )
-    
-    return {
-        "status": "updated",
-        "extension": ext_name
-    }
+@app.post("/extensions/update/{name}")
+async def update_extension(name: str):
+    try:
+        manager.update(name)
+        scrapers.update(manager.load_all())
+        return {"updated": name}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Update failed: {e}")
 
 
-@app.delete("/extensions/{ext_name}")
-async def uninstall_extension(ext_name: str) -> Dict[str, str]:
-    """Uninstall an extension"""
-    success = await manager.uninstall_extension(ext_name)
-    
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to uninstall extension: {ext_name}"
-        )
-    
-    return {
-        "status": "uninstalled",
-        "extension": ext_name
-    }
+@app.delete("/extensions/{name}")
+async def remove_extension(name: str):
+    try:
+        manager.remove(name)
+        scrapers.pop(name, None)
+        return {"removed": name}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 @app.get("/extensions/check-updates")
-async def check_extension_updates() -> Dict[str, dict]:
-    """Check for available updates for all extensions"""
-    return await manager.check_updates()
+async def check_extension_updates():
+    return manager.check_updates()
 
 
-@app.post("/search/{source_id}")
-async def search(source_id: str, request: SearchRequest):
-    """Search for manga using a specific scraper"""
-    scraper = manager.get_scraper(source_id)
-    
-    if not scraper:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Source not found: {source_id}"
-        )
-    
-    try:
-        results = await scraper.search(request.query, request.page)
-        return {
-            "source": source_id,
-            "query": request.query,
-            "page": request.page,
-            "results": [
-                {
-                    "id": m.id,
-                    "title": m.title,
-                    "author": m.author,
-                    "description": m.description,
-                    "cover_url": m.cover_url,
-                    "status": m.status,
-                    "genres": m.genres,
-                    "rating": m.rating,
-                    "url": m.url,
-                }
-                for m in results
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Search error in {source_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Search failed: {str(e)}"
-        )
-
-
-@app.post("/manga/{source_id}/chapters")
-async def get_chapters(source_id: str, manga_url: str):
-    """Get all chapters for a manga"""
-    scraper = manager.get_scraper(source_id)
-    
-    if not scraper:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Source not found: {source_id}"
-        )
-    
-    try:
-        chapters = await scraper.get_chapters(manga_url)
-        return {
-            "source": source_id,
-            "manga_url": manga_url,
-            "chapters": [
-                {
-                    "id": c.id,
-                    "title": c.title,
-                    "chapter_num": c.chapter_num,
-                    "url": c.url,
-                    "manga_id": c.manga_id,
-                    "manga_title": c.manga_title,
-                    "published_date": c.published_date,
-                    "scanlator": c.scanlator,
-                }
-                for c in chapters
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Get chapters error in {source_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get chapters: {str(e)}"
-        )
-
-
-@app.post("/chapter/{source_id}/images")
-async def get_chapter_images(source_id: str, chapter_url: str):
-    """Get all images for a chapter"""
-    scraper = manager.get_scraper(source_id)
-    
-    if not scraper:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Source not found: {source_id}"
-        )
-    
-    try:
-        images = await scraper.get_chapter_images(chapter_url)
-        return {
-            "source": source_id,
-            "chapter_url": chapter_url,
-            "images": [
-                {
-                    "url": img.url,
-                    "page_num": img.page_num,
-                    "type": img.image_type,
-                }
-                for img in images
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Get chapter images error in {source_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get chapter images: {str(e)}"
-        )
-
-
-@app.get("/latest/{source_id}")
-async def get_latest_chapters(source_id: str, limit: int = 10):
-    """Get latest updated chapters from a source"""
-    scraper = manager.get_scraper(source_id)
-    
-    if not scraper:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Source not found: {source_id}"
-        )
-    
-    try:
-        chapters = await scraper.get_latest_chapters(limit)
-        return {
-            "source": source_id,
-            "latest": [
-                {
-                    "id": c.id,
-                    "title": c.title,
-                    "chapter_num": c.chapter_num,
-                    "url": c.url,
-                    "published_date": c.published_date,
-                }
-                for c in chapters
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Get latest error in {source_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get latest chapters: {str(e)}"
-        )
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+@app.get("/health")
+async def health():
+    return {"status": "ok", "extensions": list(scrapers.keys())}

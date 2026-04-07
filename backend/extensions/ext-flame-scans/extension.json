@@ -1,0 +1,9 @@
+{
+  "name": "Flame Scans",
+  "version": "1.0.0",
+  "base_url": "https://flamescans.org",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "FlameScansScraper"
+}

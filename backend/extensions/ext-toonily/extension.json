@@ -1,0 +1,9 @@
+{
+  "name": "Toonily",
+  "version": "1.0.0",
+  "base_url": "https://toonily.com",
+  "language": "en",
+  "nsfw": true,
+  "entry": "scraper.py",
+  "class": "ToonilyScraper"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Asura Scans",
+  "version": "1.0.0",
+  "base_url": "https://asuracomic.net",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "AsuraScraper"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "MangaDex",
+  "version": "1.0.0",
+  "base_url": "https://api.mangadex.org",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "MangaDexScraper"
+}

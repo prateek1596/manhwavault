@@ -1,0 +1,9 @@
+{
+  "name": "Jinx Manga",
+  "version": "1.0.0",
+  "base_url": "https://jinxmanga.com",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "JinxMangaScraper"
+}

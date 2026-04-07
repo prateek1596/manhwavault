@@ -13,6 +13,13 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@expo/vector-icons": "^14.0.0",
+    "@react-native-async-storage/async-storage": "^1.23.0",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native-stack": "^6.11.0",
+    "@react-navigation/stack": "^6.3.20",
+    "axios": "^1.6.0",
     "expo": "^51.0.0",
     "expo-font": "^12.0.0",
     "expo-linking": "^6.0.0",
@@ -25,12 +32,6 @@
     "react-native-pager-view": "^6.2.0",
     "react-native-screens": "^3.31.0",
     "react-native-tab-view": "^3.5.0",
-    "@react-native-async-storage/async-storage": "^1.23.0",
-    "@react-navigation/native": "^6.1.9",
-    "@react-navigation/bottom-tabs": "^6.5.11",
-    "@react-navigation/stack": "^6.3.20",
-    "@expo/vector-icons": "^14.0.0",
-    "axios": "^1.6.0",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
