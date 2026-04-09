@@ -2,6 +2,7 @@
   "name": "GGManga",
   "version": "1.0.0",
   "base_url": "https://ggmanga.com",
+  "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://ggmanga.com",
   "language": "en",
   "nsfw": false,
   "entry": "scraper.py",

@@ -10,26 +10,30 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "core"))
 from base_scraper import BaseScraper, Chapter, Manhwa
-from http_fallback import fetch_html
 
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Referer": "https://toonily.com/",
+    "Referer": "https://mangajinx.com/",
 }
+
+
 def _make_id(value: str) -> str:
     return hashlib.md5(value.encode("utf-8")).hexdigest()[:12]
 
 
-class ToonilyScraper(BaseScraper):
-    name = "Toonily"
-    base_url = "https://toonily.com"
+class MangaJinxScraper(BaseScraper):
+    name = "MangaJinx"
+    base_url = "https://mangajinx.com"
     language = "en"
-    nsfw = True
+    nsfw = False
     version = "1.0.0"
 
     async def _get_html(self, url: str) -> str:
-        return await fetch_html(url, HEADERS, timeout=20)
+        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.text
 
     def _absolute(self, href: str) -> str:
         return urljoin(self.base_url, href)
@@ -37,6 +41,7 @@ class ToonilyScraper(BaseScraper):
     async def search(self, query: str) -> List[Manhwa]:
         candidate_urls = [
             f"{self.base_url}/?s={quote_plus(query)}&post_type=wp-manga",
+            f"{self.base_url}/series?name={quote_plus(query)}",
             f"{self.base_url}/?s={quote_plus(query)}",
         ]
 

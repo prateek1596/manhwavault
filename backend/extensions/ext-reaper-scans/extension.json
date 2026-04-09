@@ -2,6 +2,7 @@
   "name": "Reaper Scans",
   "version": "1.0.0",
   "base_url": "https://reaperscans.com",
+  "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://reaperscans.com",
   "language": "en",
   "nsfw": false,
   "entry": "scraper.py",

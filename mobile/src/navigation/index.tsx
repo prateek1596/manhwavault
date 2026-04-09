@@ -3,14 +3,13 @@ import { Text } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useColorScheme } from 'react-native';
 
-import { lightTheme, darkTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import {
   LibraryScreen, SearchScreen, UpdatesScreen,
   ExtensionsScreen, SettingsScreen,
 } from '../screens/TabScreens';
-import { ManhwaDetailScreen, InstallExtensionScreen } from '../screens/StackScreens';
+import { ManhwaDetailScreen, InstallExtensionScreen, ExtensionSourceScreen } from '../screens/StackScreens';
 import { ReaderScreen } from '../screens/ReaderScreen';
 import { RootTabParamList, RootStackParamList } from '../types';
 
@@ -29,8 +28,7 @@ function TabIcon({ name, focused, color }: { name: string; focused: boolean; col
 }
 
 function TabNavigator() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? darkTheme : lightTheme;
+  const theme = useAppTheme();
 
   return (
     <Tab.Navigator
@@ -61,13 +59,12 @@ function TabNavigator() {
 }
 
 export function AppNavigator() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? darkTheme : lightTheme;
+  const theme = useAppTheme();
 
   const navTheme = {
-    ...(scheme === 'dark' ? DarkTheme : DefaultTheme),
+    ...(theme.dark ? DarkTheme : DefaultTheme),
     colors: {
-      ...(scheme === 'dark' ? DarkTheme : DefaultTheme).colors,
+      ...(theme.dark ? DarkTheme : DefaultTheme).colors,
       background: theme.colors.background,
       card: theme.colors.surface,
       text: theme.colors.text,
@@ -94,6 +91,11 @@ export function AppNavigator() {
           name="InstallExtension"
           component={InstallExtensionScreen}
           options={{ title: 'Install Extension', presentation: 'modal' }}
+        />
+        <Stack.Screen
+          name="ExtensionSource"
+          component={ExtensionSourceScreen}
+          options={{ title: 'Browse Source' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

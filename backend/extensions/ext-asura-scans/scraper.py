@@ -1,18 +1,19 @@
 import re
 import hashlib
 from typing import List
+from urllib.parse import quote_plus
 import httpx
 from bs4 import BeautifulSoup
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "core"))
 from base_scraper import BaseScraper, Manhwa, Chapter
+from http_fallback import fetch_html
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer": "https://asuracomic.net/",
 }
-
 def _make_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
 
@@ -24,9 +25,27 @@ class AsuraScraper(BaseScraper):
     version = "1.0.0"
 
     async def search(self, query: str) -> List[Manhwa]:
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            r = await client.get(f"{self.base_url}/series", params={"name": query})
-        soup = BeautifulSoup(r.text, "html.parser")
+        candidate_urls = [
+            f"{self.base_url}/series?name={quote_plus(query)}",
+            f"{self.base_url}/?s={quote_plus(query)}&post_type=wp-manga",
+            f"https://asurascans.com/?s={quote_plus(query)}&post_type=wp-manga",
+            f"https://asurascans.com/?s={quote_plus(query)}",
+        ]
+
+        soup = None
+        for url in candidate_urls:
+            try:
+                html = await fetch_html(url, HEADERS, timeout=15)
+                candidate = BeautifulSoup(html, "html.parser")
+                if candidate.select("div.bs, div.bsx, article.bs, div.utao"):
+                    soup = candidate
+                    break
+            except Exception:
+                continue
+
+        if soup is None:
+            return []
+
         results = []
         for card in soup.select("div.bs, div.bsx, article.bs"):
             try:

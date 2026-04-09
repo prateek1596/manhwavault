@@ -25,9 +25,44 @@ export interface Extension {
   baseUrl: string;
   language: string;
   nsfw: boolean;
+  iconUrl?: string;
   repoUrl: string;
   installed: boolean;
   updateAvailable?: boolean;
+}
+
+export interface SourceInfo {
+  name: string;
+  baseUrl: string;
+  language: string;
+  nsfw: boolean;
+  version: string;
+  iconUrl?: string;
+}
+
+export interface ExtensionStats {
+  total: number;
+  nsfw: number;
+  safe: number;
+  byLanguage: Record<string, number>;
+}
+
+export interface SourceCatalogResponse {
+  items: Manhwa[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  message?: string;
+}
+
+export interface SourceSearchGroup {
+  source: string;
+  iconUrl?: string;
+  status: 'ok' | 'error';
+  message?: string;
+  results: Manhwa[];
+  total: number;
 }
 
 export interface LibraryEntry {
@@ -54,4 +89,5 @@ export type RootStackParamList = {
   ManhwaDetail: { manhwa: Manhwa };
   Reader: { manhwa: Manhwa; chapter: Chapter; chapterList: Chapter[] };
   InstallExtension: undefined;
+  ExtensionSource: { sourceName: string; initialQuery?: string };
 };

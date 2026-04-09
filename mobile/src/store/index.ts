@@ -146,28 +146,49 @@ export const useLibraryStore = create<LibraryState>()(
 // ── Settings store ────────────────────────────────────────────────────────────
 
 interface SettingsState {
+  appTheme: 'system' | 'midnight' | 'ocean' | 'sunrise';
+  setAppTheme: (theme: 'system' | 'midnight' | 'ocean' | 'sunrise') => void;
+  backendUrl: string;
+  setBackendUrl: (url: string) => void;
   defaultReadingMode: ReadingMode;
   setDefaultReadingMode: (mode: ReadingMode) => void;
   imageQuality: 'low' | 'medium' | 'high';
   setImageQuality: (q: 'low' | 'medium' | 'high') => void;
   keepScreenOn: boolean;
   setKeepScreenOn: (v: boolean) => void;
+  includeNsfwSources: boolean;
+  setIncludeNsfwSources: (v: boolean) => void;
+  preferredSearchSource: string;
+  setPreferredSearchSource: (source: string) => void;
+  searchResultLimit: number;
+  setSearchResultLimit: (limit: number) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
+      appTheme: 'system',
+      setAppTheme: (theme) => set({ appTheme: theme }),
+      backendUrl: '',
+      setBackendUrl: (url) => set({ backendUrl: url.trim() }),
       defaultReadingMode: 'vertical',
       setDefaultReadingMode: (mode) => set({ defaultReadingMode: mode }),
       imageQuality: 'high',
       setImageQuality: (q) => set({ imageQuality: q }),
       keepScreenOn: true,
       setKeepScreenOn: (v) => set({ keepScreenOn: v }),
+      includeNsfwSources: false,
+      setIncludeNsfwSources: (v) => set({ includeNsfwSources: v }),
+      preferredSearchSource: 'all',
+      setPreferredSearchSource: (source) => set({ preferredSearchSource: source || 'all' }),
+      searchResultLimit: 60,
+      setSearchResultLimit: (limit) =>
+        set({ searchResultLimit: Math.max(10, Math.min(200, Math.round(limit))) }),
     }),
     {
       name: 'settings',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
       migrate: (persistedState: any) => {
         const state = persistedState?.state ?? persistedState;
 
@@ -181,13 +202,32 @@ export const useSettingsStore = create<SettingsState>()(
             ? state.imageQuality
             : 'high';
 
+        const appTheme =
+          state?.appTheme === 'midnight' ||
+          state?.appTheme === 'ocean' ||
+          state?.appTheme === 'sunrise' ||
+          state?.appTheme === 'system'
+            ? state.appTheme
+            : 'system';
+
         return {
           ...persistedState,
           state: {
             ...state,
+            appTheme,
+            backendUrl:
+              typeof state?.backendUrl === 'string'
+                ? state.backendUrl.trim()
+                : '',
             defaultReadingMode: readingMode,
             imageQuality,
             keepScreenOn: toBoolean(state?.keepScreenOn, true),
+            includeNsfwSources: toBoolean(state?.includeNsfwSources, false),
+            preferredSearchSource:
+              typeof state?.preferredSearchSource === 'string' && state.preferredSearchSource.trim().length > 0
+                ? state.preferredSearchSource
+                : 'all',
+            searchResultLimit: Math.max(10, Math.min(200, toNumber(state?.searchResultLimit, 60))),
           },
         };
       },

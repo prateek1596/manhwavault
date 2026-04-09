@@ -2,6 +2,7 @@
   "name": "Flame Scans",
   "version": "1.0.0",
   "base_url": "https://flamescans.org",
+  "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://flamescans.org",
   "language": "en",
   "nsfw": false,
   "entry": "scraper.py",

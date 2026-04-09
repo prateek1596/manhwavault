@@ -4,6 +4,7 @@ import importlib.util
 import logging
 from pathlib import Path
 from typing import Dict
+from urllib.parse import quote
 
 import git
 
@@ -20,6 +21,12 @@ if not init.exists():
 
 
 class ExtensionManager:
+
+    @staticmethod
+    def _default_icon_for_base_url(base_url: str) -> str:
+        if not base_url:
+            return ""
+        return f"https://www.google.com/s2/favicons?sz=128&domain_url={quote(base_url, safe=':/')}"
 
     def install(self, git_url: str) -> str:
         name = git_url.rstrip("/").split("/")[-1]
@@ -93,12 +100,14 @@ class ExtensionManager:
                 continue
             try:
                 m = self._read_manifest(ext_dir)
+                base_url = m.get("base_url", "")
                 result.append({
                     "name": m.get("name", ext_dir.name),
                     "version": m.get("version", "?"),
-                    "baseUrl": m.get("base_url", ""),
+                    "baseUrl": base_url,
                     "language": m.get("language", "en"),
                     "nsfw": m.get("nsfw", False),
+                    "iconUrl": m.get("icon_url", "") or self._default_icon_for_base_url(base_url),
                     "repoUrl": self._get_repo_url(ext_dir),
                     "installed": True,
                 })

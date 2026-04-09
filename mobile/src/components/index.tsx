@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   View, Text, Image, TouchableOpacity,
-  StyleSheet, ActivityIndicator, useColorScheme,
+  StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { useAppTheme } from '../theme';
 import { Manhwa } from '../types';
@@ -139,6 +139,47 @@ export function Chip({ label, active, onPress }: ChipProps) {
   );
 }
 
+interface SourceIconProps {
+  name: string;
+  iconUrl?: string;
+  size?: number;
+}
+
+export function SourceIcon({ name, iconUrl, size = 28 }: SourceIconProps) {
+  const theme = useAppTheme();
+  const initials = (name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+
+  return (
+    <View
+      style={[
+        styles.sourceIconWrap,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surfaceVariant,
+        },
+      ]}
+    >
+      {iconUrl ? (
+        <Image
+          source={{ uri: iconUrl }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+          resizeMode="cover"
+        />
+      ) : (
+        <Text style={[styles.sourceIconText, { color: theme.colors.textSecondary }]}>{initials || '?'}</Text>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: { borderRadius: 10, overflow: 'hidden', marginBottom: 8 },
   cover: { borderRadius: 0 },
@@ -158,4 +199,6 @@ const styles = StyleSheet.create({
   sectionAction: { fontSize: 13, fontWeight: '500' },
   chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 99, borderWidth: 0.5, marginRight: 8 },
   chipText: { fontSize: 13, fontWeight: '500' },
+  sourceIconWrap: { alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, overflow: 'hidden' },
+  sourceIconText: { fontSize: 10, fontWeight: '700' },
 });

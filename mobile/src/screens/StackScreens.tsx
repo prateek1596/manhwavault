@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Image, ScrollView, TouchableOpacity,
   FlatList, TextInput, StyleSheet, Alert,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppTheme } from '../theme';
-import { useLibraryStore } from '../store';
-import { LoadingSpinner, Chip } from '../components';
+import { useLibraryStore, useSettingsStore } from '../store';
+import { LoadingSpinner, Chip, ManhwaCard, EmptyState } from '../components';
 import * as api from '../api/client';
 import { Chapter, Manhwa } from '../types';
 
@@ -207,6 +207,144 @@ export function InstallExtensionScreen({ navigation }: any) {
   );
 }
 
+// ── ExtensionSource ──────────────────────────────────────────────────────────
+
+export function ExtensionSourceScreen({ route, navigation }: any) {
+  const theme = useAppTheme();
+  const { sourceName, initialQuery }: { sourceName: string; initialQuery?: string } = route.params;
+  const includeNsfwSources = useSettingsStore((s) => s.includeNsfwSources);
+  const [query, setQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [catalog, setCatalog] = useState<Manhwa[]>([]);
+
+  const browseLimit = 30;
+  const isSearching = submittedQuery.trim().length > 0;
+
+  const catalogQuery = useQuery({
+    queryKey: ['source-catalog', sourceName, submittedQuery, page, includeNsfwSources],
+    queryFn: () =>
+      api.getSourceCatalog(sourceName, {
+        q: submittedQuery,
+        page,
+        limit: browseLimit,
+        includeNsfw: includeNsfwSources,
+        contentType: 'manhwa',
+      }),
+  });
+
+  useEffect(() => {
+    const items = catalogQuery.data?.items ?? [];
+    if (page === 1) {
+      setCatalog(items);
+      return;
+    }
+    if (items.length > 0) {
+      setCatalog((prev) => {
+        const seen = new Set(prev.map((m) => `${m.source}-${m.url}`));
+        const next = [...prev];
+        for (const item of items) {
+          const key = `${item.source}-${item.url}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            next.push(item);
+          }
+        }
+        return next;
+      });
+    }
+  }, [catalogQuery.data?.items, page]);
+
+  const canLoadMore = useMemo(() => Boolean(catalogQuery.data?.hasMore) && !isSearching, [catalogQuery.data?.hasMore, isSearching]);
+
+  const submitSearch = () => {
+    const next = query.trim();
+    setPage(1);
+    setSubmittedQuery(next);
+  };
+
+  useEffect(() => {
+    const preset = (initialQuery ?? '').trim();
+    if (!preset) {
+      return;
+    }
+    setQuery(preset);
+    setSubmittedQuery(preset);
+    setPage(1);
+  }, [initialQuery]);
+
+  const clearSearch = () => {
+    setQuery('');
+    setSubmittedQuery('');
+    setPage(1);
+  };
+
+  return (
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
+      <View style={styles.installContent}>
+        <Text style={[styles.installTitle, { color: theme.colors.text }]}>Browse {sourceName}</Text>
+        <Text style={[styles.installSub, { color: theme.colors.textSecondary }]}>Manhwa-first catalog and source-specific search.</Text>
+        <View style={[styles.urlInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+          <TextInput
+            style={[styles.urlTextInput, { color: theme.colors.text }]}
+            placeholder="Search title inside this source"
+            placeholderTextColor={theme.colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+            onSubmitEditing={submitSearch}
+          />
+        </View>
+        <View style={styles.catalogActions}>
+          <TouchableOpacity style={[styles.catalogActionBtn, { backgroundColor: theme.colors.primary }]} onPress={submitSearch}>
+            <Text style={[styles.actionBtnText, { color: '#fff' }]}>Search</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.catalogActionBtn, { backgroundColor: theme.colors.surface, borderWidth: 0.5, borderColor: theme.colors.border }]} onPress={clearSearch}>
+            <Text style={[styles.actionBtnText, { color: theme.colors.text }]}>Catalog</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {catalogQuery.isLoading && page === 1 ? <LoadingSpinner /> : null}
+      {!catalogQuery.isLoading && catalog.length === 0 ? (
+        <EmptyState
+          icon="📚"
+          title="No titles found"
+          subtitle={catalogQuery.data?.message ?? 'Try another keyword or open another extension.'}
+        />
+      ) : (
+        <FlatList
+          data={catalog}
+          keyExtractor={(item) => `${item.source}-${item.url}`}
+          numColumns={2}
+          contentContainerStyle={styles.sourceGrid}
+          columnWrapperStyle={styles.sourceGridRow}
+          renderItem={({ item }) => (
+            <ManhwaCard
+              manhwa={item}
+              width={156}
+              onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item })}
+            />
+          )}
+          ListFooterComponent={
+            canLoadMore ? (
+              <TouchableOpacity
+                style={[styles.installBtn, { backgroundColor: theme.colors.surfaceVariant, marginHorizontal: 16, marginBottom: 24 }]}
+                onPress={() => setPage((p) => p + 1)}
+                disabled={catalogQuery.isFetching}
+              >
+                <Text style={[styles.installBtnText, { color: theme.colors.text }]}>
+                  {catalogQuery.isFetching ? 'Loading...' : 'Load more'}
+                </Text>
+              </TouchableOpacity>
+            ) : null
+          }
+        />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   hero: { height: 220, position: 'relative', marginBottom: 8 },
@@ -241,4 +379,8 @@ const styles = StyleSheet.create({
   exampleBox: { borderRadius: 10, borderWidth: 0.5, padding: 14, gap: 8 },
   exampleTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
   exampleUrl: { fontSize: 12 },
+  sourceGrid: { paddingHorizontal: 12, paddingBottom: 20 },
+  sourceGridRow: { justifyContent: 'space-between', paddingHorizontal: 4 },
+  catalogActions: { flexDirection: 'row', gap: 10 },
+  catalogActionBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
 });

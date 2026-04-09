@@ -10,14 +10,13 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "core"))
 from base_scraper import BaseScraper, Chapter, Manhwa
+from http_fallback import fetch_html
 
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer": "https://reaperscans.com/",
 }
-
-
 def _make_id(value: str) -> str:
     return hashlib.md5(value.encode("utf-8")).hexdigest()[:12]
 
@@ -30,10 +29,7 @@ class ReaperScansScraper(BaseScraper):
     version = "1.0.0"
 
     async def _get_html(self, url: str) -> str:
-        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.text
+        return await fetch_html(url, HEADERS, timeout=20)
 
     def _absolute(self, href: str) -> str:
         return urljoin(self.base_url, href)

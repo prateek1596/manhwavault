@@ -2,6 +2,7 @@
   "name": "Asura Scans",
   "version": "1.0.0",
   "base_url": "https://asuracomic.net",
+  "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://asuracomic.net",
   "language": "en",
   "nsfw": false,
   "entry": "scraper.py",
