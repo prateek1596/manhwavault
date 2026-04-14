@@ -1,14 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, FlatList, TextInput, TouchableOpacity,
-  ScrollView, Switch, StyleSheet, useWindowDimensions, Modal, Pressable,
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Switch,
+  StyleSheet,
+  useWindowDimensions,
+  Modal,
+  Pressable,
+  Image,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppTheme } from '../theme';
 import { useLibraryStore, useSettingsStore } from '../store';
-import { ManhwaCard, LoadingSpinner, EmptyState, SectionHeader, Chip, SourceIcon } from '../components';
+import { ManhwaCard, LoadingSpinner, EmptyState, Chip, SourceIcon } from '../components';
 import * as api from '../api/client';
 import { SourceInfo } from '../types';
+
+function parseChapterFromText(value?: string | number): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (!value) return null;
+  const match = String(value).match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 // ── Library ───────────────────────────────────────────────────────────────────
 
@@ -17,38 +37,71 @@ export function LibraryScreen({ navigation }: any) {
   const entries = useLibraryStore((s) => s.entries);
   const { width } = useWindowDimensions();
   const cardWidth = (width - 48) / 2;
-  const library = Object.values(entries);
+  const library = Object.values(entries).sort((a, b) => {
+    const aTime = new Date(a.lastReadAt || a.followedAt || 0).getTime();
+    const bTime = new Date(b.lastReadAt || b.followedAt || 0).getTime();
+    return bTime - aTime;
+  });
 
-  if (library.length === 0) {
-    return (
-      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
+  return (
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <View style={styles.screenPad}>
+        <TouchableOpacity
+          style={[styles.searchShell, { backgroundColor: theme.colors.surfaceVariant }]}
+          onPress={() => navigation.navigate('Search')}
+        >
+          <MaterialCommunityIcons name="magnify" size={22} color={theme.colors.textMuted} style={styles.searchGlyph} />
+          <Text style={[styles.searchPrompt, { color: theme.colors.textSecondary }]}>Search manga</Text>
+          <MaterialCommunityIcons name="dots-vertical" size={21} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.text }]}>On device</Text>
+          </View>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.text }]}>New chapters</Text>
+          </View>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.text }]}>Completed</Text>
+          </View>
+        </ScrollView>
+
+        <Text style={[styles.sectionHead, { color: theme.colors.textSecondary }]}>Recent</Text>
+      </View>
+
+      {library.length === 0 ? (
         <EmptyState
           icon="📚"
           title="Your library is empty"
-          subtitle="Search for manhwa and follow series to add them here"
+          subtitle="Search and follow series to build your history."
           action={{ label: 'Browse', onPress: () => navigation.navigate('Search') }}
         />
-      </View>
-    );
-  }
+      ) : (
+        <FlatList
+          data={library}
+          numColumns={2}
+          keyExtractor={(item) => item.manhwa.id}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={[styles.listContent, { paddingTop: 0 }]}
+          renderItem={({ item }) => {
+            const latestChapter = parseChapterFromText(item.manhwa.latestChapter);
+            const progressPercent =
+              latestChapter && item.lastReadChapter !== undefined
+                ? Math.max(0, Math.min(100, (item.lastReadChapter / latestChapter) * 100))
+                : undefined;
 
-  return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
-      <SectionHeader title="Library" />
-      <FlatList
-        data={library}
-        numColumns={2}
-        keyExtractor={(item) => item.manhwa.id}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <ManhwaCard
-            manhwa={item.manhwa}
-            width={cardWidth}
-            onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item.manhwa })}
-          />
-        )}
-      />
+            return (
+              <ManhwaCard
+                manhwa={item.manhwa}
+                width={cardWidth}
+                progressPercent={progressPercent}
+                onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item.manhwa })}
+              />
+            );
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -113,6 +166,7 @@ export function SearchScreen({ navigation }: any) {
   const searchError = isSearchingAll ? groupedSearchQuery.error : flatSearchQuery.error;
   const groupedResults = groupedSearchQuery.data ?? [];
   const flatResults = flatSearchQuery.data ?? [];
+  const sourceGrid = sourceOptions.filter((src) => src.name !== 'all').slice(0, 12);
 
   const handleSearch = () => {
     const next = query.trim();
@@ -121,36 +175,40 @@ export function SearchScreen({ navigation }: any) {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
-      <View style={styles.searchTopRow}>
-        <Text style={[styles.searchScreenTitle, { color: theme.colors.text }]}>Search</Text>
-        <TouchableOpacity
-          onPress={() => setShowSourceMenu((v) => !v)}
-          style={[styles.menuBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-        >
-          <Text style={[styles.menuBtnText, { color: theme.colors.text }]}>⋮</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <View style={styles.screenPad}>
+        <View style={[styles.searchShell, { backgroundColor: theme.colors.surfaceVariant }]}>
+          <MaterialCommunityIcons name="magnify" size={22} color={theme.colors.textMuted} style={styles.searchGlyph} />
+          <TextInput
+            style={[styles.searchInputInline, { color: theme.colors.text }]}
+            placeholder="Search manga"
+            placeholderTextColor={theme.colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          <TouchableOpacity onPress={() => setShowSourceMenu(true)}>
+            <MaterialCommunityIcons name="dots-vertical" size={21} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        </View>
 
-      <View style={[styles.searchBar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
-        <TextInput
-          style={[styles.searchInput, { color: theme.colors.text }]}
-          placeholder="Search manga / manhwa"
-          placeholderTextColor={theme.colors.textMuted}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={handleSearch}
-          returnKeyType="search"
-          autoCorrect={false}
-        />
-        <TouchableOpacity onPress={handleSearch} style={[styles.searchBtn, { backgroundColor: theme.colors.primary }]}> 
-          <Text style={styles.searchBtnText}>Search</Text>
-        </TouchableOpacity>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Local storage</Text>
+          </View>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Bookmarks</Text>
+          </View>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Random</Text>
+          </View>
+          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Downloads</Text>
+          </View>
+        </ScrollView>
       </View>
-
-      <Text style={[styles.searchContext, { color: theme.colors.textMuted }]}>
-        Source: {preferredSearchSource === 'all' ? 'All sources' : preferredSearchSource}
-      </Text>
 
       <Modal
         transparent
@@ -208,18 +266,12 @@ export function SearchScreen({ navigation }: any) {
           subtitle={(searchError as Error | undefined)?.message ?? 'Unable to query backend.'}
         />
       )}
-      {!loading && submitted.length > 1 && isSearchingAll && groupedResults.length === 0 && (
-        <EmptyState icon="🔍" title="No source results" subtitle={`Nothing found for "${submitted}"`} />
-      )}
-      {!loading && submitted.length > 1 && !isSearchingAll && flatResults.length === 0 && (
-        <EmptyState icon="🔍" title="No results" subtitle={`Nothing found for "${submitted}"`} />
-      )}
 
-      {!loading && isSearchingAll && groupedResults.length > 0 && (
+      {!loading && submitted.length > 1 && isSearchingAll && groupedResults.length > 0 && (
         <ScrollView contentContainerStyle={styles.groupedSearchWrap}>
-          <Text style={[styles.groupedHeader, { color: theme.colors.text }]}>Search results</Text>
+          <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Results</Text>
           {groupedResults.map((group) => (
-            <View key={group.source} style={styles.groupSection}>
+            <View key={group.source} style={[styles.groupSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
               <View style={styles.groupTitleRow}>
                 <View style={styles.groupTitleLeft}>
                   <SourceIcon name={group.source} iconUrl={group.iconUrl} size={20} />
@@ -229,16 +281,6 @@ export function SearchScreen({ navigation }: any) {
                   <Text style={[styles.groupShowAll, { color: theme.colors.primary }]}>Show all</Text>
                 </TouchableOpacity>
               </View>
-
-              {group.status === 'error' ? (
-                <Text style={[styles.groupError, { color: theme.colors.danger }]} numberOfLines={1}>
-                  {group.message ?? 'Source error'}
-                </Text>
-              ) : group.message ? (
-                <Text style={[styles.groupHint, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                  {group.message}
-                </Text>
-              ) : null}
 
               {group.results.length > 0 ? (
                 <FlatList
@@ -251,7 +293,7 @@ export function SearchScreen({ navigation }: any) {
                     <View style={styles.groupCardWrap}>
                       <ManhwaCard
                         manhwa={item}
-                        width={96}
+                        width={104}
                         onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item })}
                       />
                     </View>
@@ -265,7 +307,7 @@ export function SearchScreen({ navigation }: any) {
         </ScrollView>
       )}
 
-      {!loading && !isSearchingAll && flatResults.length > 0 && (
+      {!loading && submitted.length > 1 && !isSearchingAll && flatResults.length > 0 && (
         <FlatList
           data={flatResults}
           numColumns={2}
@@ -283,7 +325,35 @@ export function SearchScreen({ navigation }: any) {
       )}
 
       {!submitted && !loading && (
-        <EmptyState icon="🔎" title="Search manhwa" subtitle="Use the menu to pick source, then search." />
+        <ScrollView contentContainerStyle={styles.discoveryWrap}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Suggestions</Text>
+            <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>More</Text>
+          </View>
+          <Text style={[styles.discoveryText, { color: theme.colors.textSecondary }]}>Use search or pick a source below to explore quickly.</Text>
+
+          <View style={[styles.sectionHeaderRow, { marginTop: 16 }]}>
+            <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Manga sources</Text>
+            <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Manage</Text>
+          </View>
+          <View style={styles.sourceGrid}>
+            {sourceGrid.map((src) => (
+              <TouchableOpacity
+                key={src.name}
+                style={styles.sourceGridItem}
+                onPress={() => {
+                  setPreferredSearchSource(src.name);
+                  navigation.navigate('ExtensionSource', { sourceName: src.name });
+                }}
+              >
+                <SourceIcon name={src.name} iconUrl={src.iconUrl} size={52} />
+                <Text style={[styles.sourceGridText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                  {src.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -294,52 +364,132 @@ export function SearchScreen({ navigation }: any) {
 export function UpdatesScreen({ navigation }: any) {
   const theme = useAppTheme();
   const entries = useLibraryStore((s) => s.entries);
-  const followed = Object.values(entries).map((e) => ({
+  const libraryEntries = Object.values(entries);
+  const followed = libraryEntries.filter((e) => e.notificationsEnabled).map((e) => ({
     url: e.manhwa.url,
     source: e.manhwa.source,
   }));
+  const followedSignature = followed.map((item) => `${item.source}|${item.url}`);
 
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ['updates'],
+    queryKey: ['updates', ...followedSignature],
     queryFn: () => api.getUpdates(followed),
     enabled: followed.length > 0,
   });
 
-  if (followed.length === 0) {
+  if (libraryEntries.length === 0) {
     return (
-      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
+      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
         <EmptyState icon="🔔" title="No followed series" subtitle="Follow manhwa from your library to see updates here" />
       </View>
     );
   }
 
+  if (followed.length === 0) {
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+        <EmptyState icon="🔕" title="Notifications are off" subtitle="Enable alerts on a series in its detail page to receive updates." />
+      </View>
+    );
+  }
+
+  const updates = data ?? [];
+  const topCards = updates
+    .map((update) => {
+      const entry = Object.values(entries).find((e) => {
+        if (!update.source) return e.manhwa.url === update.manhwaUrl;
+        return e.manhwa.url === update.manhwaUrl && e.manhwa.source === update.source;
+      });
+      if (!entry) return null;
+      return {
+        id: `${update.source ?? 'unknown'}-${update.manhwaUrl}`,
+        manhwa: entry.manhwa,
+      };
+    })
+    .filter(Boolean) as Array<{ id: string; manhwa: any }>;
+
   return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
-      <SectionHeader title="Updates" action={{ label: 'Refresh', onPress: () => refetch() }} />
-      {isFetching && <LoadingSpinner />}
-      <ScrollView contentContainerStyle={styles.listContent}>
-        {data?.map((update) => {
-          const entry = Object.values(entries).find((e) => e.manhwa.url === update.manhwaUrl);
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <ScrollView contentContainerStyle={styles.feedWrap} showsVerticalScrollIndicator={false}>
+        <View style={styles.screenPad}>
+          <TouchableOpacity
+            style={[styles.searchShell, { backgroundColor: theme.colors.surfaceVariant }]}
+            onPress={() => navigation.navigate('Search')}
+          >
+            <MaterialCommunityIcons name="magnify" size={22} color={theme.colors.textMuted} style={styles.searchGlyph} />
+            <Text style={[styles.searchPrompt, { color: theme.colors.textSecondary }]}>Search manga</Text>
+            <MaterialCommunityIcons name="dots-vertical" size={21} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+              <Text style={[styles.filterPillText, { color: theme.colors.text }]}>Read later</Text>
+            </View>
+            <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
+              <Text style={[styles.filterPillText, { color: theme.colors.text }]}>Secret</Text>
+            </View>
+            <TouchableOpacity style={[styles.filterPillSolid, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
+              <Text style={styles.filterPillSolidText}>Refresh</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {isFetching && <LoadingSpinner />}
+
+        {topCards.length > 0 && (
+          <View style={styles.topUpdatesBlock}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Updates</Text>
+              <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>More</Text>
+            </View>
+            <FlatList
+              horizontal
+              data={topCards}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.topUpdatesRow}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.topUpdateCard}
+                  onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item.manhwa })}
+                >
+                  <Image source={{ uri: item.manhwa.cover }} style={styles.topUpdateImage} resizeMode="cover" />
+                  <Text style={[styles.topUpdateTitle, { color: theme.colors.text }]} numberOfLines={2}>{item.manhwa.title}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Today</Text>
+        </View>
+
+        {updates.map((update) => {
+          const entry = Object.values(entries).find((e) => {
+            if (!update.source) return e.manhwa.url === update.manhwaUrl;
+            return e.manhwa.url === update.manhwaUrl && e.manhwa.source === update.source;
+          });
           if (!entry || update.newChapters.length === 0) return null;
           return (
-            <View key={update.manhwaUrl} style={[styles.updateCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
-              <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={1}>
-                {entry.manhwa.title}
-              </Text>
-              {update.newChapters.map((ch) => (
-                <TouchableOpacity
-                  key={ch.id}
-                  style={styles.updateChapter}
-                  onPress={() => navigation.navigate('Reader', {
-                    manhwa: entry.manhwa,
-                    chapter: ch,
-                    chapterList: update.newChapters,
-                  })}
-                >
-                  <Text style={[styles.updateChapterText, { color: theme.colors.primary }]}>{ch.title}</Text>
-                  {ch.uploadedAt && <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{ch.uploadedAt}</Text>}
-                </TouchableOpacity>
-              ))}
+            <View key={`${update.source ?? 'unknown'}-${update.manhwaUrl}`} style={styles.feedItem}>
+              <Image source={{ uri: entry.manhwa.cover }} style={styles.feedThumb} resizeMode="cover" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.feedTitle, { color: theme.colors.text }]} numberOfLines={1}>{entry.manhwa.title}</Text>
+                {update.newChapters.map((ch) => (
+                  <TouchableOpacity
+                    key={ch.id}
+                    style={styles.feedChapterRow}
+                    onPress={() => navigation.navigate('Reader', {
+                      manhwa: entry.manhwa,
+                      chapter: ch,
+                      chapterList: update.newChapters,
+                    })}
+                  >
+                    <Text style={[styles.feedDot, { color: '#E9B4B0' }]}>●</Text>
+                    <Text style={[styles.feedChapter, { color: theme.colors.textSecondary }]} numberOfLines={1}>{ch.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           );
         })}
@@ -381,18 +531,17 @@ export function ExtensionsScreen({ navigation }: any) {
   });
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
-      <SectionHeader
-        title="Extensions"
-        action={{ label: '+ Install', onPress: () => navigation.navigate('InstallExtension') }}
-      />
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <View style={styles.screenPad}>
+        <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Extensions</Text>
+      </View>
 
       <View style={styles.extensionSummaryRow}>
-        <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+        <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>Installed</Text>
           <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{statsQuery.data?.total ?? 0}</Text>
         </View>
-        <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+        <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>Safe</Text>
           <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{statsQuery.data?.safe ?? 0}</Text>
         </View>
@@ -408,7 +557,7 @@ export function ExtensionsScreen({ navigation }: any) {
       {extensionsQuery.isLoading && <LoadingSpinner />}
       <ScrollView contentContainerStyle={styles.listContent}>
         {extensionsQuery.data?.map((ext) => (
-          <View key={ext.name} style={[styles.extCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+          <View key={ext.name} style={[styles.extCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={styles.extRow}>
               <TouchableOpacity style={styles.extInfo} onPress={() => navigation.navigate('ExtensionSource', { sourceName: ext.name })}>
                 <View style={styles.extTitleRow}>
@@ -480,11 +629,10 @@ export function SettingsScreen() {
   const sub = [styles.settingSub, { color: theme.colors.textSecondary }];
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
-      <SectionHeader title="Settings" />
-      <ScrollView>
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <ScrollView contentContainerStyle={styles.settingsWrap} showsVerticalScrollIndicator={false}>
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Appearance</Text>
-        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface }]}> 
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.settingRow}>
             <View>
               <Text style={label}>Theme preset</Text>
@@ -509,7 +657,7 @@ export function SettingsScreen() {
         </View>
 
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Reader</Text>
-        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface }]}> 
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={row}>
             <View>
               <Text style={label}>Default reading mode</Text>
@@ -519,7 +667,11 @@ export function SettingsScreen() {
               style={[styles.modeToggle, { backgroundColor: theme.colors.primaryLight }]}
               onPress={() => setDefaultReadingMode(defaultReadingMode === 'vertical' ? 'horizontal' : 'vertical')}
             >
-              <Text style={[styles.modeToggleText, { color: theme.colors.primary }]}>{defaultReadingMode === 'vertical' ? '↕' : '↔'}</Text>
+              <MaterialCommunityIcons
+                name={defaultReadingMode === 'vertical' ? 'swap-vertical' : 'swap-horizontal'}
+                size={20}
+                color={theme.colors.primary}
+              />
             </TouchableOpacity>
           </View>
           <View style={row}>
@@ -529,7 +681,7 @@ export function SettingsScreen() {
         </View>
 
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Sources</Text>
-        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface }]}> 
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.settingRow}>
             <View style={{ flex: 1, paddingRight: 12 }}>
               <Text style={label}>Backend URL</Text>
@@ -599,7 +751,7 @@ export function SettingsScreen() {
         </View>
 
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Images</Text>
-        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface }]}> 
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           {(['low', 'medium', 'high'] as const).map((q) => (
             <TouchableOpacity key={q} style={row} onPress={() => setImageQuality(q)}>
               <Text style={label}>{q.charAt(0).toUpperCase() + q.slice(1)} quality</Text>
@@ -616,56 +768,108 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  screenPad: { paddingHorizontal: 16, paddingTop: 12 },
   row: { paddingHorizontal: 16, gap: 16 },
-  listContent: { padding: 16 },
-  searchTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
-  searchScreenTitle: { fontSize: 20, fontWeight: '800' },
-  menuBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 0.5, alignItems: 'center', justifyContent: 'center' },
-  menuBtnText: { fontSize: 19, fontWeight: '700', lineHeight: 19 },
-  searchBar: { flexDirection: 'row', margin: 16, borderRadius: 16, borderWidth: 0.5, overflow: 'hidden', alignItems: 'center' },
-  searchInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
-  searchBtn: { paddingHorizontal: 16, paddingVertical: 12 },
-  searchBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  searchContext: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 6 },
+  listContent: { padding: 16, paddingBottom: 28 },
+  settingsWrap: { paddingBottom: 24 },
+
+  searchShell: {
+    height: 56,
+    borderRadius: 28,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  searchGlyph: { marginRight: 10 },
+  searchPrompt: { flex: 1, fontSize: 16, fontWeight: '500' },
+  searchInputInline: { flex: 1, fontSize: 16, paddingVertical: 0 },
+
+  filterRow: { paddingBottom: 8, gap: 8 },
+  filterPill: {
+    borderWidth: 1.25,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  filterPillText: { fontSize: 13, fontWeight: '700' },
+  filterPillSolid: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8 },
+  filterPillSolidText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  sectionHead: { fontSize: 15, fontWeight: '800', marginBottom: 9 },
+  sectionHeaderRow: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionMore: { fontSize: 13, fontWeight: '700' },
+
+  groupedSearchWrap: { paddingHorizontal: 16, paddingBottom: 24, gap: 10 },
+  groupSection: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 10,
+  },
+  groupTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  groupTitleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  groupTitleText: { fontSize: 12, fontWeight: '800' },
+  groupShowAll: { fontSize: 12, fontWeight: '700' },
+  groupEmpty: { fontSize: 12, paddingVertical: 6 },
+  groupRowCards: { paddingRight: 4 },
+  groupCardWrap: { marginRight: 8 },
+
+  discoveryWrap: { paddingHorizontal: 16, paddingBottom: 24 },
+  discoveryText: { fontSize: 13, lineHeight: 19 },
+  sourceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+  sourceGridItem: { width: '22%', alignItems: 'center', gap: 7 },
+  sourceGridText: { fontSize: 12, textAlign: 'center', width: '100%' },
+
+  feedWrap: { paddingBottom: 24 },
+  topUpdatesBlock: { marginTop: 4 },
+  topUpdatesRow: { paddingHorizontal: 16, gap: 10 },
+  topUpdateCard: { width: 130 },
+  topUpdateImage: { width: 130, height: 184, borderRadius: 16, marginBottom: 6 },
+  topUpdateTitle: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+
+  feedItem: {
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    alignItems: 'center',
+  },
+  feedThumb: { width: 50, height: 50, borderRadius: 10 },
+  feedTitle: { fontSize: 15, fontWeight: '700', marginBottom: 1 },
+  feedChapterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+  feedDot: { fontSize: 11 },
+  feedChapter: { fontSize: 13 },
+
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   sourceSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 0.5,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
     borderBottomWidth: 0,
     maxHeight: '65%',
     paddingBottom: 14,
   },
   sheetHandle: { width: 44, height: 5, borderRadius: 99, alignSelf: 'center', marginTop: 10, marginBottom: 10 },
-  sheetTitle: { fontSize: 15, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 8 },
-  sheetActionBtn: { marginHorizontal: 16, borderWidth: 0.5, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8 },
+  sheetTitle: { fontSize: 15, fontWeight: '800', paddingHorizontal: 16, paddingBottom: 8 },
+  sheetActionBtn: { marginHorizontal: 16, borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8 },
   sheetActionText: { fontSize: 14, fontWeight: '600' },
   sheetSectionTitle: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 4, fontWeight: '700' },
   sourceMenuScroll: { maxHeight: 220 },
   sourceMenuItem: { paddingHorizontal: 16, paddingVertical: 12 },
   sourceMenuItemText: { fontSize: 14, fontWeight: '600' },
-  groupedSearchWrap: { paddingHorizontal: 10, paddingBottom: 20 },
-  groupedHeader: { fontSize: 14, fontWeight: '700', marginHorizontal: 6, marginBottom: 4, marginTop: 4 },
-  groupSection: { paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  groupTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingBottom: 3 },
-  groupTitleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  groupTitleText: { fontSize: 12, fontWeight: '700' },
-  groupShowAll: { fontSize: 11, fontWeight: '600' },
-  groupError: { fontSize: 11, paddingHorizontal: 6, paddingBottom: 4 },
-  groupHint: { fontSize: 10, paddingHorizontal: 6, paddingBottom: 4 },
-  groupEmpty: { fontSize: 11, paddingHorizontal: 6, paddingVertical: 6 },
-  groupRowCards: { paddingHorizontal: 2 },
-  groupCardWrap: { marginRight: 8 },
-  updateCard: { borderRadius: 10, borderWidth: 0.5, padding: 12, marginBottom: 10 },
-  updateTitle: { fontSize: 14, fontWeight: '700', marginBottom: 6 },
-  updateChapter: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  updateChapterText: { fontSize: 13 },
-  updateDate: { fontSize: 12 },
+
   extensionSummaryRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 6 },
-  summaryCard: { flex: 1, borderRadius: 10, borderWidth: 0.5, paddingVertical: 8, paddingHorizontal: 10 },
+  summaryCard: { flex: 1, borderRadius: 16, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 10 },
   summaryLabel: { fontSize: 11 },
   summaryValue: { fontSize: 14, fontWeight: '700' },
-  extCard: { borderRadius: 10, borderWidth: 0.5, padding: 12, marginBottom: 10 },
+  extCard: { borderRadius: 16, borderWidth: 1, padding: 12, marginBottom: 10 },
   extRow: { flexDirection: 'row', gap: 10 },
   extInfo: { flex: 1, gap: 2 },
   extTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 1 },
@@ -673,22 +877,22 @@ const styles = StyleSheet.create({
   extUrl: { fontSize: 12 },
   extVersion: { fontSize: 11 },
   extActions: { gap: 6, justifyContent: 'center' },
-  extBtn: { borderWidth: 0.5, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
+  extBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   extBtnText: { fontSize: 12, fontWeight: '600' },
+
   backendUrlRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 10 },
-  backendUrlInput: { flex: 1, borderWidth: 0.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
-  backendUrlButton: { borderRadius: 12, paddingHorizontal: 14, justifyContent: 'center' },
+  backendUrlInput: { flex: 1, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14 },
+  backendUrlButton: { borderRadius: 18, paddingHorizontal: 14, justifyContent: 'center' },
   backendUrlButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   backendUrlActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingBottom: 10 },
-  backendUrlGhost: { borderWidth: 0.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  backendUrlGhost: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
   backendUrlGhostText: { fontSize: 12, fontWeight: '600' },
   backendUrlHint: { flex: 1, fontSize: 11, textAlign: 'right' },
   settingGroup: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 6 },
-  settingCard: { marginHorizontal: 16, borderRadius: 16, overflow: 'hidden', marginBottom: 10, paddingVertical: 4 },
+  settingCard: { marginHorizontal: 16, borderRadius: 18, overflow: 'hidden', marginBottom: 10, paddingVertical: 4, borderWidth: 1 },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, marginVertical: 2 },
   settingLabel: { fontSize: 15 },
   settingSub: { fontSize: 12, marginTop: 2 },
-  modeToggle: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  modeToggleText: { fontSize: 18 },
-  limitChipWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2 },
+  modeToggle: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  limitChipWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2, gap: 8 },
 });

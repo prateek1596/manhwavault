@@ -1,0 +1,10 @@
+{
+  "name": "English Pack 108",
+  "version": "1.0.0",
+  "base_url": "https://api.mangadex.org",
+  "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://mangadex.org",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "MangaDexEnglishPack108Scraper"
+}

@@ -4,7 +4,7 @@
   "base_url": "https://jinxmanga.com",
   "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://jinxmanga.com",
   "language": "en",
-  "nsfw": false,
+  "nsfw": true,
   "entry": "scraper.py",
   "class": "JinxMangaScraper"
 }

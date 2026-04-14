@@ -15,7 +15,7 @@ import { Chapter, Manhwa } from '../types';
 export function ManhwaDetailScreen({ route, navigation }: any) {
   const theme = useAppTheme();
   const { manhwa }: { manhwa: Manhwa } = route.params;
-  const { follow, unfollow, isFollowing, getEntry } = useLibraryStore();
+  const { follow, unfollow, isFollowing, getEntry, toggleNotifications } = useLibraryStore();
   const following = isFollowing(manhwa.id);
   const entry = getEntry(manhwa.id);
 
@@ -81,6 +81,16 @@ export function ManhwaDetailScreen({ route, navigation }: any) {
               {following ? '✓ In Library' : '+ Add to Library'}
             </Text>
           </TouchableOpacity>
+          {following && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: theme.colors.surface, borderWidth: 0.5, borderColor: theme.colors.border }]}
+              onPress={() => toggleNotifications(manhwa.id)}
+            >
+              <Text style={[styles.actionBtnText, { color: theme.colors.text }]}>
+                {entry?.notificationsEnabled ? '🔔 Alerts On' : '🔕 Alerts Off'}
+              </Text>
+            </TouchableOpacity>
+          )}
           {following && entry?.lastReadChapter !== undefined && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: theme.colors.surface, borderWidth: 0.5, borderColor: theme.colors.border }]}

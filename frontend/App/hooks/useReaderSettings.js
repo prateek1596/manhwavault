@@ -5,7 +5,7 @@ const READER_MODE_KEY = 'reader_mode';
 const READER_IMAGE_FIT_KEY = 'reader_image_fit';
 
 const DEFAULT_SETTINGS = {
-  readingMode: 'paged',
+  readingMode: 'vertical',
   imageFit: 'cover',
 };
 

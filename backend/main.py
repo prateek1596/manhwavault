@@ -868,11 +868,11 @@ async def get_updates(body: UpdatesRequest):
     async def check_one(entry: SeriesEntry):
         scraper = _resolve_scraper_for_url(entry.source, entry.url)
         if not scraper:
-            return {"manhwaUrl": entry.url, "newChapters": []}
+            return {"manhwaUrl": entry.url, "source": entry.source, "newChapters": []}
         try:
             chapters = await scraper.get_chapters(entry.url)
             # Return latest 3 chapters as "new" (client tracks what's read)
-            return {"manhwaUrl": entry.url, "newChapters": [
+            return {"manhwaUrl": entry.url, "source": entry.source, "newChapters": [
                 {
                     "id": c.id, "title": c.title, "url": c.url,
                     "number": c.number, "uploadedAt": c.uploaded_at,
@@ -881,7 +881,7 @@ async def get_updates(body: UpdatesRequest):
             ]}
         except Exception as e:
             logger.warning(f"Update check failed for {entry.source} ({entry.url}): {e}")
-            return {"manhwaUrl": entry.url, "newChapters": []}
+            return {"manhwaUrl": entry.url, "source": entry.source, "newChapters": []}
 
     results = await asyncio.gather(*[check_one(e) for e in body.series])
     return results

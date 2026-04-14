@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
-  FlatList,
+  ScrollView,
   Image,
   TouchableOpacity,
   Text,
   ActivityIndicator,
-  Dimensions,
+  StatusBar,
+  useWindowDimensions,
 } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import { api } from '@services/api';
@@ -17,17 +18,16 @@ export default function ReaderScreen({ route, navigation }) {
   const { colors } = useTheme();
   const { title, sourceId, chapterUrl } = route.params;
   const [images, setImages] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [showControls, setShowControls] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [imageSizes, setImageSizes] = useState({});
   const {
     settings,
     loading: readerSettingsLoading,
   } = useReaderSettings();
 
-  const { width, height } = Dimensions.get('window');
-  const isPaged = settings.readingMode === 'paged';
+  const { width } = useWindowDimensions();
+  const isVerticalFlow = settings.readingMode === 'vertical';
 
   useEffect(() => {
     const fetchImages = async () => {
@@ -41,13 +41,21 @@ export default function ReaderScreen({ route, navigation }) {
       setError('');
 
       try {
-        const response = await api.post(`/chapter/${sourceId}/images`, {
-          chapter_url: chapterUrl,
+        const response = await api.get('/chapter/images', {
+          params: {
+            url: chapterUrl,
+            source: sourceId,
+          },
         });
 
-        const chapterImages = response.data?.images ?? [];
+        const payload = response.data || [];
+        const chapterImages = payload.map((img, index) => {
+          if (typeof img === 'string') {
+            return { url: img, page_num: index + 1 };
+          }
+          return img;
+        });
         setImages(chapterImages);
-        setCurrentPage(chapterImages.length > 0 ? 1 : 0);
       } catch (fetchError) {
         console.error('Error fetching images:', fetchError);
         setError('Failed to load chapter images.');
@@ -59,30 +67,57 @@ export default function ReaderScreen({ route, navigation }) {
     fetchImages();
   }, [sourceId, chapterUrl]);
 
-  const onViewableItemsChanged = React.useRef(({ viewableItems }) => {
-    if (!viewableItems || viewableItems.length === 0) {
+  useEffect(() => {
+    if (!images.length) {
       return;
     }
 
-    const firstVisible = viewableItems[0];
-    if (typeof firstVisible.index === 'number') {
-      setCurrentPage(firstVisible.index + 1);
-    }
-  }).current;
+    const urls = images.map((item) => item.url).filter(Boolean);
+    const prefetchBatch = urls.map((url) => Image.prefetch(url));
+    Promise.allSettled(prefetchBatch).catch(() => {});
+  }, [images]);
 
-  const viewabilityConfig = React.useRef({
-    itemVisiblePercentThreshold: 65,
-  }).current;
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSizes = async () => {
+      const entries = await Promise.all(
+        images.map(
+          (item) =>
+            new Promise((resolve) => {
+              Image.getSize(
+                item.url,
+                (imgWidth, imgHeight) => resolve([item.url, { width: imgWidth, height: imgHeight }]),
+                () => resolve([item.url, { width: width, height: Math.round(width * 1.5) }])
+              );
+            })
+        )
+      );
+
+      if (!cancelled) {
+        setImageSizes(Object.fromEntries(entries));
+      }
+    };
+
+    if (images.length > 0) {
+      loadSizes();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [images, width]);
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: '#000',
     },
     loadingContainer: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: colors.background,
     },
     errorText: {
       color: colors.error,
@@ -90,53 +125,18 @@ export default function ReaderScreen({ route, navigation }) {
       textAlign: 'center',
       paddingHorizontal: 24,
     },
-    retryButton: {
-      backgroundColor: colors.primary,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 8,
-    },
-    retryButtonText: {
-      color: '#ffffff',
-      fontWeight: '600',
-    },
     pageContainer: {
-      width,
-      minHeight: isPaged ? height : 380,
-      backgroundColor: colors.background,
+      width: '100%',
+      backgroundColor: '#000',
     },
     image: {
       width: '100%',
-      height: isPaged ? height : 420,
       resizeMode: settings.imageFit,
+      backgroundColor: '#000',
     },
-    controls: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      padding: 16,
-    },
-    controlsText: {
-      color: '#ffffff',
-      fontSize: 14,
-    },
-    chapterTitle: {
-      position: 'absolute',
-      top: 42,
-      left: 12,
-      right: 12,
-      color: '#ffffff',
-      fontSize: 12,
-      textAlign: 'center',
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      borderRadius: 6,
-      paddingVertical: 6,
-      paddingHorizontal: 8,
+    readerStage: {
+      backgroundColor: '#000',
+      paddingBottom: 0,
     },
   });
 
@@ -160,8 +160,8 @@ export default function ReaderScreen({ route, navigation }) {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.retryButtonText}>Back</Text>
+        <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }} onPress={() => navigation.goBack()}>
+          <Text style={{ color: '#ffffff', fontWeight: '600' }}>Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -177,40 +177,34 @@ export default function ReaderScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={images}
-        renderItem={({ item }) => (
-          <View style={styles.pageContainer}>
-            <Image source={{ uri: item.url }} style={styles.image} />
-          </View>
-        )}
-        keyExtractor={(item, index) => `${item.url}-${index}`}
-        scrollEventThrottle={16}
-        onScrollBeginDrag={() => isPaged && setShowControls(false)}
-        onMomentumScrollEnd={() => isPaged && setShowControls(true)}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        pagingEnabled={isPaged}
+      <StatusBar hidden />
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.readerStage}
         showsVerticalScrollIndicator={false}
-      />
+      >
+        {images.map((item, index) => {
+          const size = imageSizes[item.url] || { width: width, height: Math.round(width * 1.5) };
+          const aspectRatio = size.width && size.height ? size.width / size.height : 0.7;
+          const imageHeight = Math.round(width / aspectRatio);
 
-      {showControls && (
-        <>
-          <Text style={styles.chapterTitle} numberOfLines={1}>
-            {title || 'Reader'}
-          </Text>
-
-          <View style={styles.controls}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={styles.controlsText}>Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.controlsText}>
-              {currentPage} / {images.length}
-            </Text>
-            <Text style={styles.controlsText}>{isPaged ? 'Swipe' : 'Scroll'}</Text>
-          </View>
-        </>
-      )}
+          return (
+            <View key={`${item.url}-${index}`} style={styles.pageContainer}>
+              <Image
+                source={{ uri: item.url }}
+                style={[
+                  styles.image,
+                  {
+                    aspectRatio,
+                    height: imageHeight,
+                  },
+                ]}
+              />
+            </View>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }

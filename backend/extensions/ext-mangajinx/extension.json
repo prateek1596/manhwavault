@@ -4,7 +4,7 @@
   "base_url": "https://mangajinx.com",
   "icon_url": "https://www.google.com/s2/favicons?sz=128&domain_url=https://mangajinx.com",
   "language": "en",
-  "nsfw": false,
+  "nsfw": true,
   "entry": "scraper.py",
   "class": "MangaJinxScraper"
 }

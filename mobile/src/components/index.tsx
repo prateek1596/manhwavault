@@ -12,21 +12,33 @@ interface ManhwaCardProps {
   manhwa: Manhwa;
   onPress: () => void;
   width?: number;
+  progressPercent?: number;
 }
 
-export function ManhwaCard({ manhwa, onPress, width = 150 }: ManhwaCardProps) {
+export function ManhwaCard({ manhwa, onPress, width = 150, progressPercent }: ManhwaCardProps) {
   const theme = useAppTheme();
+  const normalizedProgress =
+    typeof progressPercent === 'number' && Number.isFinite(progressPercent)
+      ? Math.max(0, Math.min(100, Math.round(progressPercent)))
+      : null;
   return (
     <TouchableOpacity
       onPress={onPress}
       style={[styles.card, { width, backgroundColor: theme.colors.surface }]}
       activeOpacity={0.75}
     >
-      <Image
-        source={{ uri: manhwa.cover }}
-        style={[styles.cover, { width, height: width * 1.45 }]}
-        resizeMode="cover"
-      />
+      <View>
+        <Image
+          source={{ uri: manhwa.cover }}
+          style={[styles.cover, { width, height: width * 1.45 }]}
+          resizeMode="cover"
+        />
+        {normalizedProgress !== null && (
+          <View style={[styles.progressBubble, { backgroundColor: theme.colors.background }]}> 
+            <Text style={[styles.progressText, { color: theme.colors.text }]}>{normalizedProgress}%</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.cardInfo}>
         <Text
           style={[styles.cardTitle, { color: theme.colors.text }]}
@@ -183,11 +195,25 @@ export function SourceIcon({ name, iconUrl, size = 28 }: SourceIconProps) {
 const styles = StyleSheet.create({
   card: { borderRadius: 10, overflow: 'hidden', marginBottom: 8 },
   cover: { borderRadius: 0 },
-  cardInfo: { padding: 8, gap: 3 },
-  cardTitle: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
-  cardSub: { fontSize: 11 },
-  sourcePill: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
-  sourceText: { fontSize: 10, fontWeight: '600' },
+  progressBubble: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    minWidth: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    paddingHorizontal: 8,
+  },
+  progressText: { fontSize: 11, fontWeight: '800' },
+  cardInfo: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 10, gap: 4 },
+  cardTitle: { fontSize: 12, fontWeight: '700', lineHeight: 16 },
+  cardSub: { fontSize: 10 },
+  sourcePill: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 1 },
+  sourceText: { fontSize: 9, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   emptyIcon: { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },

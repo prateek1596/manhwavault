@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -23,6 +23,7 @@ function HomeStackNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: colors.surface,
         },
@@ -40,7 +41,6 @@ function HomeStackNavigator() {
         component={HomeScreen}
         options={{
           title: 'ManhwaVault',
-          headerLargeTitle: true,
         }}
       />
       <Stack.Screen
@@ -69,6 +69,7 @@ function SearchStackNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: colors.surface,
         },
@@ -86,7 +87,6 @@ function SearchStackNavigator() {
         component={SearchScreen}
         options={{
           title: 'Search Manga',
-          headerLargeTitle: true,
         }}
       />
       <Stack.Screen
@@ -115,6 +115,7 @@ function LibraryStackNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: colors.surface,
         },
@@ -132,7 +133,6 @@ function LibraryStackNavigator() {
         component={LibraryScreen}
         options={{
           title: 'My Library',
-          headerLargeTitle: true,
         }}
       />
       <Stack.Screen
@@ -161,6 +161,7 @@ function SettingsStackNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: colors.surface,
         },
@@ -178,7 +179,6 @@ function SettingsStackNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Settings',
-          headerLargeTitle: true,
         }}
       />
     </Stack.Navigator>
@@ -188,6 +188,17 @@ function SettingsStackNavigator() {
 // Root Tab Navigator
 function RootTabNavigator() {
   const { colors } = useTheme();
+  const getTabStyle = (route) => {
+    const focusedRoute = getFocusedRouteNameFromRoute(route) ?? '';
+    if (focusedRoute === 'Reader') {
+      return { display: 'none' };
+    }
+    return {
+      backgroundColor: colors.surface,
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+    };
+  };
 
   return (
     <Tab.Navigator
@@ -196,9 +207,7 @@ function RootTabNavigator() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
+          ...getTabStyle(route),
         },
         tabBarIcon: ({ color, size }) => {
           let iconName;

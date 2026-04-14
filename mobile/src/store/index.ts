@@ -177,7 +177,7 @@ export const useSettingsStore = create<SettingsState>()(
       setImageQuality: (q) => set({ imageQuality: q }),
       keepScreenOn: true,
       setKeepScreenOn: (v) => set({ keepScreenOn: v }),
-      includeNsfwSources: false,
+      includeNsfwSources: true,
       setIncludeNsfwSources: (v) => set({ includeNsfwSources: v }),
       preferredSearchSource: 'all',
       setPreferredSearchSource: (source) => set({ preferredSearchSource: source || 'all' }),
@@ -222,7 +222,7 @@ export const useSettingsStore = create<SettingsState>()(
             defaultReadingMode: readingMode,
             imageQuality,
             keepScreenOn: toBoolean(state?.keepScreenOn, true),
-            includeNsfwSources: toBoolean(state?.includeNsfwSources, false),
+            includeNsfwSources: toBoolean(state?.includeNsfwSources, true),
             preferredSearchSource:
               typeof state?.preferredSearchSource === 'string' && state.preferredSearchSource.trim().length > 0
                 ? state.preferredSearchSource

@@ -4,6 +4,7 @@ import {
   Dimensions, StyleSheet, StatusBar, useWindowDimensions,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useAppTheme } from '../theme';
 import { useLibraryStore, useSettingsStore } from '../store';
 import { LoadingSpinner } from '../components';
@@ -23,11 +24,18 @@ interface ReaderScreenProps {
   navigation: any;
 }
 
+type ReaderImageQuality = 'low' | 'medium' | 'high';
+
+function KeepAwakeLock() {
+  useKeepAwake();
+  return null;
+}
+
 export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const theme = useAppTheme();
   const { manhwa, chapter, chapterList } = route.params;
-  const { defaultReadingMode } = useSettingsStore();
+  const { defaultReadingMode, keepScreenOn, imageQuality } = useSettingsStore();
   const { setLastRead } = useLibraryStore();
 
   const [mode, setMode] = useState<ReadingMode>(defaultReadingMode);
@@ -76,6 +84,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
 
   return (
     <View style={[styles.screen, { backgroundColor: '#000' }]}>
+      {keepScreenOn && <KeepAwakeLock />}
       <StatusBar hidden={!showControls} />
 
       {showControls && (
@@ -98,6 +107,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
         <VerticalReader
           images={images}
           screenWidth={screenWidth}
+          imageQuality={imageQuality}
           onTapPage={() => setShowControls(true)}
           onBeginScroll={() => setShowControls(false)}
         />
@@ -109,6 +119,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
           flatListRef={flatListRef}
           screenWidth={screenWidth}
           screenHeight={screenHeight}
+          imageQuality={imageQuality}
           onTapPage={() => setShowControls(true)}
           onBeginScroll={() => setShowControls(false)}
         />
@@ -121,6 +132,10 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
             <TouchableOpacity style={styles.menuBtn} onPress={toggleMode}>
               <Text style={styles.menuBtnText}>{mode === 'vertical' ? 'Vertical' : 'Horizontal'}</Text>
             </TouchableOpacity>
+          </View>
+          <View style={styles.menuRow}>
+            <Text style={styles.menuLabel}>Quality</Text>
+            <Text style={styles.menuLabel}>{imageQuality.toUpperCase()}</Text>
           </View>
           <View style={styles.menuRow}>
             <Text style={styles.menuLabel}>{mode === 'horizontal' ? `${currentPage + 1} / ${images.length}` : 'Scroll mode'}</Text>
@@ -149,10 +164,23 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
 
 // ── Vertical reader (webtoon-style) ───────────────────────────────────────────
 
-function ReaderPageImage({ uri, width, mode, height }: { uri: string; width: number; mode: 'vertical' | 'horizontal'; height?: number }) {
+function ReaderPageImage({
+  uri,
+  width,
+  mode,
+  imageQuality,
+  height,
+}: {
+  uri: string;
+  width: number;
+  mode: 'vertical' | 'horizontal';
+  imageQuality: ReaderImageQuality;
+  height?: number;
+}) {
   const [aspectRatio, setAspectRatio] = useState(0.67);
   const [naturalWidth, setNaturalWidth] = useState<number | null>(null);
   const [naturalHeight, setNaturalHeight] = useState<number | null>(null);
+  const qualityScale = imageQuality === 'low' ? 0.82 : imageQuality === 'medium' ? 0.92 : 1;
 
   let renderWidth = width;
   let renderHeight = mode === 'horizontal' ? (height ?? SCREEN_HEIGHT) : width / aspectRatio;
@@ -160,14 +188,14 @@ function ReaderPageImage({ uri, width, mode, height }: { uri: string; width: num
   if (naturalWidth && naturalHeight) {
     if (mode === 'vertical') {
       // Keep native sharpness: never upscale above source width.
-      renderWidth = Math.min(width, naturalWidth);
+      renderWidth = Math.min(width * qualityScale, naturalWidth);
       renderHeight = renderWidth / aspectRatio;
     } else {
       // Fit inside viewport without upscaling for crisper horizontal pages.
       const maxH = height ?? SCREEN_HEIGHT;
       const scale = Math.min(width / naturalWidth, maxH / naturalHeight, 1);
-      renderWidth = Math.max(1, Math.round(naturalWidth * scale));
-      renderHeight = Math.max(1, Math.round(naturalHeight * scale));
+      renderWidth = Math.max(1, Math.round(naturalWidth * scale * qualityScale));
+      renderHeight = Math.max(1, Math.round(naturalHeight * scale * qualityScale));
     }
   }
 
@@ -189,7 +217,7 @@ function ReaderPageImage({ uri, width, mode, height }: { uri: string; width: num
           backgroundColor: '#000',
         }}
         resizeMode="contain"
-        resizeMethod="scale"
+        resizeMethod={imageQuality === 'high' ? 'scale' : 'resize'}
         progressiveRenderingEnabled
         fadeDuration={0}
         onLoad={(event) => {
@@ -208,11 +236,13 @@ function ReaderPageImage({ uri, width, mode, height }: { uri: string; width: num
 function VerticalReader({
   images,
   screenWidth,
+  imageQuality,
   onTapPage,
   onBeginScroll,
 }: {
   images: string[];
   screenWidth: number;
+  imageQuality: ReaderImageQuality;
   onTapPage: () => void;
   onBeginScroll: () => void;
 }) {
@@ -224,7 +254,7 @@ function VerticalReader({
       renderItem={({ item }) => (
         <TouchableWithoutFeedback onPress={onTapPage}>
           <View>
-            <ReaderPageImage uri={item} width={screenWidth} mode="vertical" />
+            <ReaderPageImage uri={item} width={screenWidth} mode="vertical" imageQuality={imageQuality} />
           </View>
         </TouchableWithoutFeedback>
       )}
@@ -248,6 +278,7 @@ interface HorizontalReaderProps {
   flatListRef: React.RefObject<FlatList | null>;
   screenWidth: number;
   screenHeight: number;
+  imageQuality: ReaderImageQuality;
   onTapPage: () => void;
   onBeginScroll: () => void;
 }
@@ -259,6 +290,7 @@ function HorizontalReader({
   flatListRef,
   screenWidth,
   screenHeight,
+  imageQuality,
   onTapPage,
   onBeginScroll,
 }: HorizontalReaderProps) {
@@ -284,7 +316,13 @@ function HorizontalReader({
       renderItem={({ item }) => (
         <TouchableWithoutFeedback onPress={onTapPage}>
           <View>
-            <ReaderPageImage uri={item} width={screenWidth} height={screenHeight} mode="horizontal" />
+            <ReaderPageImage
+              uri={item}
+              width={screenWidth}
+              height={screenHeight}
+              mode="horizontal"
+              imageQuality={imageQuality}
+            />
           </View>
         </TouchableWithoutFeedback>
       )}

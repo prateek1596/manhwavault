@@ -374,10 +374,11 @@ export const getSourceCatalog = (
 // ── Updates feed ─────────────────────────────────────────────────────────────
 
 export const getUpdates = (manhwaUrls: { url: string; source: string }[]) =>
-  request<{ manhwaUrl: string; newChapters: any[] }[]>('/updates', {
+  request<{ manhwaUrl: string; source?: string; newChapters: any[] }[]>('/updates', {
     method: 'POST',
     body: JSON.stringify({ series: manhwaUrls }),
   }).then((items) => items.map((item) => ({
     ...item,
+    source: item.source,
     newChapters: item.newChapters.map(normalizeChapter),
   })));

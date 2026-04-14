@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import { api } from '@services/api';
+
+const SOURCE_MAP = {
+  all: 'all',
+  asura: 'Asura Scans',
+  flame: 'Flame Scans',
+  reaper: 'Reaper Scans',
+};
 
 export default function SearchScreen({ navigation }) {
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
-  const [selectedSource, setSelectedSource] = useState('asura');
+  const [selectedSource, setSelectedSource] = useState('all');
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,13 +24,27 @@ export default function SearchScreen({ navigation }) {
     setSearching(true);
     setError('');
     try {
-      console.log(`Searching for "${query}" on source: ${selectedSource}`);
-      const response = await api.post(`/search/${selectedSource}`, {
-        query: query.trim(),
-        page: 1,
+      const source = SOURCE_MAP[selectedSource] || 'all';
+      const response = await api.get('/search', {
+        params: {
+          q: query.trim(),
+          source,
+          limit: 60,
+          content_type: 'manhwa',
+          include_nsfw: true,
+        },
       });
-      console.log('Search results:', response.data?.results?.length);
-      setResults(response.data?.results ?? []);
+      const normalized = (response.data || []).map((item, index) => ({
+        id: item.id || `${item.source || 'unknown'}-${index}`,
+        title: item.title,
+        author: item.author || item.source || 'Unknown',
+        description: item.description || '',
+        cover_url: item.cover_url || item.cover || '',
+        url: item.url,
+        source: item.source || source,
+      }));
+
+      setResults(normalized);
     } catch (error) {
       console.error('Search error details:', {
         message: error.message,
@@ -36,9 +57,9 @@ export default function SearchScreen({ navigation }) {
       if (error.code === 'ECONNABORTED') {
         errorMsg = 'Search timed out - backend server not responding';
       } else if (error.message?.includes('Network')) {
-        errorMsg = 'Network error - check if backend is running at 192.168.29.102:8000';
-      } else if (error.response?.status === 404) {
-        errorMsg = 'Source not found on backend';
+        errorMsg = 'Network error - backend is unreachable';
+      } else if (error.response?.status === 503) {
+        errorMsg = 'No sources loaded on backend';
       }
       
       setError(errorMsg);
@@ -54,20 +75,49 @@ export default function SearchScreen({ navigation }) {
     },
     header: {
       paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 20,
+      paddingTop: 18,
+      paddingBottom: 16,
       backgroundColor: colors.background,
+    },
+    titleBlock: {
+      marginBottom: 14,
+    },
+    eyebrow: {
+      color: colors.primary,
+      fontSize: 12,
+      fontWeight: '700',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      marginBottom: 6,
+    },
+    headline: {
+      color: colors.text,
+      fontSize: 28,
+      lineHeight: 34,
+      fontWeight: '800',
+    },
+    subhead: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 8,
+      maxWidth: 340,
     },
     searchContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      marginBottom: 16,
+      borderRadius: 22,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      marginBottom: 14,
       borderColor: colors.border,
       borderWidth: 1,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.08,
+      shadowRadius: 18,
+      elevation: 4,
     },
     searchIcon: {
       marginRight: 8,
@@ -87,10 +137,10 @@ export default function SearchScreen({ navigation }) {
       flex: 1,
       paddingVertical: 10,
       paddingHorizontal: 12,
-      borderRadius: 8,
+      borderRadius: 999,
       backgroundColor: colors.background,
       borderColor: colors.border,
-      borderWidth: 1.5,
+      borderWidth: 1.25,
       alignItems: 'center',
     },
     sourceButtonActive: {
@@ -108,15 +158,16 @@ export default function SearchScreen({ navigation }) {
     content: {
       flex: 1,
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: 4,
+      paddingBottom: 12,
     },
     errorContainer: {
-      backgroundColor: colors.error + '20',
-      borderRadius: 8,
-      padding: 12,
+      backgroundColor: colors.error + '14',
+      borderRadius: 18,
+      padding: 14,
       marginBottom: 16,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.error,
+      borderWidth: 1,
+      borderColor: colors.error + '30',
     },
     errorText: {
       color: colors.error,
@@ -125,47 +176,74 @@ export default function SearchScreen({ navigation }) {
     },
     resultCard: {
       backgroundColor: colors.surface,
-      borderRadius: 10,
+      borderRadius: 24,
       padding: 14,
       marginBottom: 12,
       borderColor: colors.border,
       borderWidth: 1,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.08,
+      shadowRadius: 20,
+      elevation: 5,
+      flexDirection: 'row',
+      gap: 12,
+      alignItems: 'center',
     },
-    resultHeader: {
-      marginBottom: 8,
+    cover: {
+      width: 76,
+      height: 106,
+      borderRadius: 18,
+      backgroundColor: colors.background,
+    },
+    resultBody: {
+      flex: 1,
+      minHeight: 106,
+      justifyContent: 'center',
     },
     resultTitle: {
       color: colors.text,
-      fontSize: 15,
-      fontWeight: '700',
-      marginBottom: 4,
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: '800',
+      marginBottom: 6,
     },
     resultAuthor: {
       color: colors.textSecondary,
       fontSize: 12,
-      marginBottom: 2,
+      marginBottom: 8,
     },
-    resultSource: {
-      color: colors.primary,
+    metaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    metaChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignSelf: 'flex-start',
+    },
+    metaChipText: {
+      color: colors.textSecondary,
       fontSize: 11,
-      fontWeight: '600',
-      marginTop: 2,
+      fontWeight: '700',
     },
     emptyContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+      paddingHorizontal: 24,
     },
     emptyText: {
       color: colors.textSecondary,
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: '500',
       textAlign: 'center',
+      lineHeight: 22,
     },
     loadingContainer: {
       flex: 1,
@@ -177,6 +255,14 @@ export default function SearchScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.eyebrow}>Discover</Text>
+          <Text style={styles.headline}>Find the next manhwa to read</Text>
+          <Text style={styles.subhead}>
+            Search across sources, then jump straight into chapters with the source that actually matched.
+          </Text>
+        </View>
+
         <View style={styles.searchContainer}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
@@ -190,7 +276,7 @@ export default function SearchScreen({ navigation }) {
         </View>
         
         <View style={styles.sourceSelector}>
-          {['asura', 'flame', 'reaper'].map((source) => (
+          {['all', 'asura', 'flame', 'reaper'].map((source) => (
             <TouchableOpacity
               key={source}
               style={[
@@ -227,13 +313,16 @@ export default function SearchScreen({ navigation }) {
 
         {!searching && !error && results.length === 0 && (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Search for manga to get started</Text>
+            <Text style={styles.emptyText}>Search for a title above to begin.</Text>
           </View>
         )}
         
         {!searching && (
           <FlatList
             data={results}
+            contentContainerStyle={results.length === 0 ? { flexGrow: 1 } : undefined}
+            ListEmptyComponent={null}
+            showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.resultCard}
@@ -241,21 +330,40 @@ export default function SearchScreen({ navigation }) {
                   navigation.navigate('MangaDetail', {
                     mangaId: item.id,
                     title: item.title,
-                    sourceId: selectedSource,
+                    sourceId: item.source || SOURCE_MAP[selectedSource] || 'all',
                     mangaUrl: item.url,
+                    coverUrl: item.cover_url,
                   })
                 }
               >
-                <View style={styles.resultHeader}>
-                  <Text style={styles.resultTitle}>{item.title}</Text>
-                  <Text style={styles.resultAuthor}>{item.author || 'Unknown author'}</Text>
-                  <Text style={styles.resultSource}>From {selectedSource}</Text>
+                <Image
+                  source={item.cover_url ? { uri: item.cover_url } : undefined}
+                  style={styles.cover}
+                  resizeMode="cover"
+                />
+                <View style={styles.resultBody}>
+                  <Text style={styles.resultTitle} numberOfLines={2}>{item.title}</Text>
+                  <Text style={styles.resultAuthor} numberOfLines={1}>
+                    {item.author || 'Unknown author'}
+                  </Text>
+                  <View style={styles.metaRow}>
+                    <View style={styles.metaChip}>
+                      <Text style={styles.metaChipText}>From {item.source || SOURCE_MAP[selectedSource]}</Text>
+                    </View>
+                    {item.url ? (
+                      <View style={styles.metaChip}>
+                        <Text style={styles.metaChipText}>Open chapters</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
               </TouchableOpacity>
             )}
             keyExtractor={(item, index) => `${item.id || item.url || item.title}-${index}`}
+            ListHeaderComponent={results.length > 0 ? <View style={{ height: 4 }} /> : null}
             scrollEnabled={true}
             nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
           />
         )}
       </View>

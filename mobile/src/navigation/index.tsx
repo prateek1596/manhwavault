@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -17,14 +17,14 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function TabIcon({ name, focused, color }: { name: string; focused: boolean; color: string }) {
-  const icons: Record<string, string> = {
-    Library: '📚',
-    Search: '🔍',
-    Updates: '🔔',
-    Extensions: '🧩',
-    Settings: '⚙️',
+  const icons: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
+    Library: 'bookshelf',
+    Search: 'magnify',
+    Updates: 'bell-ring-outline',
+    Extensions: 'puzzle-outline',
+    Settings: 'cog-outline',
   };
-  return <Text style={{ fontSize: focused ? 22 : 20 }}>{icons[name]}</Text>;
+  return <MaterialCommunityIcons name={icons[name]} size={focused ? 23 : 21} color={color} />;
 }
 
 function TabNavigator() {
@@ -38,12 +38,20 @@ function TabNavigator() {
         ),
         tabBarActiveTintColor: theme.colors.tabBarActive,
         tabBarInactiveTintColor: theme.colors.tabBarInactive,
+        tabBarActiveBackgroundColor: theme.colors.primaryLight,
         tabBarStyle: {
           backgroundColor: theme.colors.tabBar,
-          borderTopColor: theme.colors.border,
-          borderTopWidth: 0.5,
+          borderTopColor: 'transparent',
+          borderTopWidth: 0,
+          height: 76,
+          paddingTop: 8,
+          paddingBottom: 8,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarItemStyle: {
+          marginHorizontal: 4,
+          borderRadius: 18,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', marginTop: 2 },
         headerStyle: { backgroundColor: theme.colors.surface },
         headerTintColor: theme.colors.text,
         headerShadowVisible: false,

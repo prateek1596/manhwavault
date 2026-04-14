@@ -26,7 +26,7 @@ class JinxMangaScraper(BaseScraper):
     name = "Jinx Manga"
     base_url = "https://jinxmanga.com"
     language = "en"
-    nsfw = False
+    nsfw = True
     version = "1.0.0"
 
     async def _get_html(self, url: str) -> str:
