@@ -110,10 +110,12 @@ export function LibraryScreen({ navigation }: any) {
 
 export function SearchScreen({ navigation }: any) {
   const theme = useAppTheme();
+  const REFRESH_COOLDOWN_MS = 1500;
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [recentQueries, setRecentQueries] = useState<string[]>([]);
   const [showSourceMenu, setShowSourceMenu] = useState(false);
+  const [nextSuggestionRefreshAt, setNextSuggestionRefreshAt] = useState(0);
   const { width } = useWindowDimensions();
   const cardWidth = (width - 48) / 2;
 
@@ -182,6 +184,14 @@ export function SearchScreen({ navigation }: any) {
     staleTime: 1000 * 60 * 3,
   });
   const suggestions = suggestionsQuery.data ?? [];
+
+  const handleSuggestionRefresh = () => {
+    if (suggestionsQuery.isFetching || Date.now() < nextSuggestionRefreshAt) {
+      return;
+    }
+    setNextSuggestionRefreshAt(Date.now() + REFRESH_COOLDOWN_MS);
+    suggestionsQuery.refetch();
+  };
 
   const handleSearch = () => {
     const next = query.trim();
@@ -347,13 +357,32 @@ export function SearchScreen({ navigation }: any) {
         <ScrollView contentContainerStyle={styles.discoveryWrap}>
           <View style={styles.sectionHeaderRow}>
             <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Suggestions</Text>
-            <TouchableOpacity onPress={() => suggestionsQuery.refetch()}>
+            <TouchableOpacity onPress={handleSuggestionRefresh} disabled={suggestionsQuery.isFetching || Date.now() < nextSuggestionRefreshAt}>
               <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>
                 {suggestionsQuery.isFetching ? 'Refreshing...' : 'Refresh'}
               </Text>
             </TouchableOpacity>
           </View>
           <Text style={[styles.discoveryText, { color: theme.colors.textSecondary }]}>Use search or pick a source below to explore quickly.</Text>
+
+          {suggestionsQuery.isLoading && suggestions.length === 0 && (
+            <FlatList
+              horizontal
+              data={[0, 1, 2, 3]}
+              keyExtractor={(item) => `mobile-suggestion-skeleton-${item}`}
+              contentContainerStyle={styles.groupRowCards}
+              showsHorizontalScrollIndicator={false}
+              renderItem={() => (
+                <View style={[styles.suggestionSkeletonCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <View style={[styles.suggestionSkeletonCover, { backgroundColor: theme.colors.surfaceVariant }]} />
+                  <View style={styles.suggestionSkeletonBody}>
+                    <View style={[styles.suggestionSkeletonLine, { backgroundColor: theme.colors.border, width: '85%' }]} />
+                    <View style={[styles.suggestionSkeletonLine, { backgroundColor: theme.colors.border, width: '55%', marginBottom: 0 }]} />
+                  </View>
+                </View>
+              )}
+            />
+          )}
 
           {suggestions.length > 0 && (
             <FlatList
@@ -885,6 +914,20 @@ const styles = StyleSheet.create({
 
   discoveryWrap: { paddingHorizontal: 16, paddingBottom: 24 },
   discoveryText: { fontSize: 13, lineHeight: 19 },
+  suggestionSkeletonCard: {
+    width: 112,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginRight: 8,
+  },
+  suggestionSkeletonCover: {
+    width: '100%',
+    height: 162,
+    opacity: 0.75,
+  },
+  suggestionSkeletonBody: { paddingHorizontal: 8, paddingVertical: 8 },
+  suggestionSkeletonLine: { height: 10, borderRadius: 999, marginBottom: 8 },
   sourceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   sourceGridItem: { width: '22%', alignItems: 'center', gap: 7 },
   sourceGridText: { fontSize: 12, textAlign: 'center', width: '100%' },

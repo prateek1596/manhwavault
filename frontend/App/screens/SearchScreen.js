@@ -5,18 +5,23 @@ import { api, getSearchSuggestions } from '@services/api';
 
 export default function SearchScreen({ navigation }) {
   const { colors } = useTheme();
+  const REFRESH_COOLDOWN_MS = 1500;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selectedSource, setSelectedSource] = useState('all');
   const [sourceOptions, setSourceOptions] = useState(['all']);
   const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
+  const [nextRefreshAt, setNextRefreshAt] = useState(0);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
 
   const loadSuggestions = async ({ showRefresh = false } = {}) => {
     if (showRefresh) {
       setRefreshingSuggestions(true);
+    } else {
+      setLoadingSuggestions(true);
     }
     try {
       const data = await getSearchSuggestions({
@@ -29,8 +34,18 @@ export default function SearchScreen({ navigation }) {
     } finally {
       if (showRefresh) {
         setRefreshingSuggestions(false);
+      } else {
+        setLoadingSuggestions(false);
       }
     }
+  };
+
+  const handleRefreshSuggestions = () => {
+    if (refreshingSuggestions || Date.now() < nextRefreshAt) {
+      return;
+    }
+    setNextRefreshAt(Date.now() + REFRESH_COOLDOWN_MS);
+    loadSuggestions({ showRefresh: true });
   };
 
   useEffect(() => {
@@ -327,6 +342,9 @@ export default function SearchScreen({ navigation }) {
       fontSize: 11,
       fontWeight: '700',
     },
+    refreshButtonDisabled: {
+      opacity: 0.5,
+    },
     suggestionCard: {
       width: 118,
       backgroundColor: colors.surface,
@@ -357,6 +375,27 @@ export default function SearchScreen({ navigation }) {
       color: colors.textSecondary,
       fontSize: 11,
       fontWeight: '600',
+    },
+    suggestionSkeleton: {
+      width: 118,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+      marginRight: 10,
+    },
+    suggestionSkeletonCover: {
+      width: 118,
+      height: 162,
+      backgroundColor: colors.surface,
+      opacity: 0.7,
+    },
+    suggestionSkeletonLine: {
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: colors.border,
+      marginBottom: 8,
     },
   });
 
@@ -425,44 +464,66 @@ export default function SearchScreen({ navigation }) {
           </View>
         )}
 
-        {!searching && !error && results.length === 0 && suggestions.length > 0 && (
+        {!searching && !error && results.length === 0 && (suggestions.length > 0 || loadingSuggestions) && (
           <View style={styles.suggestionBlock}>
             <View style={styles.suggestionHeader}>
               <Text style={styles.suggestionTitle}>Suggestions from {selectedSource === 'all' ? 'all sources' : selectedSource}</Text>
-              <TouchableOpacity style={styles.refreshButton} onPress={() => loadSuggestions({ showRefresh: true })}>
+              <TouchableOpacity
+                style={[styles.refreshButton, (refreshingSuggestions || Date.now() < nextRefreshAt) && styles.refreshButtonDisabled]}
+                onPress={handleRefreshSuggestions}
+                disabled={refreshingSuggestions || Date.now() < nextRefreshAt}
+              >
                 <Text style={styles.refreshButtonText}>{refreshingSuggestions ? 'Refreshing...' : 'Refresh'}</Text>
               </TouchableOpacity>
             </View>
-            <FlatList
-              horizontal
-              data={suggestions}
-              keyExtractor={(item, index) => `${item.id || item.url || item.title}-s-${index}`}
-              showsHorizontalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.suggestionCard}
-                  onPress={() =>
-                    navigation.navigate('MangaDetail', {
-                      mangaId: item.id,
-                      title: item.title,
-                      sourceId: item.source || selectedSource || 'all',
-                      mangaUrl: item.url,
-                      coverUrl: item.cover || '',
-                    })
-                  }
-                >
-                  <Image
-                    source={item.cover ? { uri: item.cover } : undefined}
-                    style={styles.suggestionCover}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.suggestionBody}>
-                    <Text style={styles.suggestionItemTitle} numberOfLines={2}>{item.title}</Text>
-                    <Text style={styles.suggestionMeta} numberOfLines={1}>{item.source || 'Unknown'}</Text>
+            {loadingSuggestions && suggestions.length === 0 ? (
+              <FlatList
+                horizontal
+                data={[0, 1, 2, 3]}
+                keyExtractor={(item) => `skeleton-${item}`}
+                showsHorizontalScrollIndicator={false}
+                renderItem={() => (
+                  <View style={styles.suggestionSkeleton}>
+                    <View style={styles.suggestionSkeletonCover} />
+                    <View style={styles.suggestionBody}>
+                      <View style={[styles.suggestionSkeletonLine, { width: '85%' }]} />
+                      <View style={[styles.suggestionSkeletonLine, { width: '55%', marginBottom: 0 }]} />
+                    </View>
                   </View>
-                </TouchableOpacity>
-              )}
-            />
+                )}
+              />
+            ) : (
+              <FlatList
+                horizontal
+                data={suggestions}
+                keyExtractor={(item, index) => `${item.id || item.url || item.title}-s-${index}`}
+                showsHorizontalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.suggestionCard}
+                    onPress={() =>
+                      navigation.navigate('MangaDetail', {
+                        mangaId: item.id,
+                        title: item.title,
+                        sourceId: item.source || selectedSource || 'all',
+                        mangaUrl: item.url,
+                        coverUrl: item.cover || '',
+                      })
+                    }
+                  >
+                    <Image
+                      source={item.cover ? { uri: item.cover } : undefined}
+                      style={styles.suggestionCover}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.suggestionBody}>
+                      <Text style={styles.suggestionItemTitle} numberOfLines={2}>{item.title}</Text>
+                      <Text style={styles.suggestionMeta} numberOfLines={1}>{item.source || 'Unknown'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
           </View>
         )}
         
