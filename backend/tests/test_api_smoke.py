@@ -195,6 +195,40 @@ def test_search_suggestions(client: TestClient):
     assert all(item["source"] == "Safe Source" for item in items)
 
 
+def test_suggestion_telemetry(client: TestClient):
+    refresh = client.post(
+        "/telemetry/suggestions/event",
+        json={
+            "event": "refresh",
+            "source": "Safe Source",
+            "client": "frontend",
+            "surface": "search",
+        },
+    )
+    assert refresh.status_code == 200
+    assert refresh.json()["ok"] is True
+
+    click = client.post(
+        "/telemetry/suggestions/event",
+        json={
+            "event": "click",
+            "source": "Safe Source",
+            "client": "mobile",
+            "surface": "search-discovery",
+        },
+    )
+    assert click.status_code == 200
+    assert click.json()["ok"] is True
+
+    stats = client.get("/telemetry/suggestions")
+    assert stats.status_code == 200
+    payload = stats.json()
+    assert payload["total"]["refresh"] >= 1
+    assert payload["total"]["click"] >= 1
+    assert payload["bySource"]["Safe Source"]["refresh"] >= 1
+    assert payload["bySource"]["Safe Source"]["click"] >= 1
+
+
 def test_extension_action_endpoints(client: TestClient):
     reload_resp = client.post("/extensions/reload")
     assert reload_resp.status_code == 200

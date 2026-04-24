@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
-import { api, getSearchSuggestions } from '@services/api';
+import { api, getSearchSuggestions, trackSuggestionTelemetry } from '@services/api';
 
 export default function SearchScreen({ navigation }) {
   const { colors } = useTheme();
@@ -45,6 +45,12 @@ export default function SearchScreen({ navigation }) {
       return;
     }
     setNextRefreshAt(Date.now() + REFRESH_COOLDOWN_MS);
+    trackSuggestionTelemetry({
+      event: 'refresh',
+      source: selectedSource,
+      client: 'frontend',
+      surface: 'search',
+    }).catch(() => {});
     loadSuggestions({ showRefresh: true });
   };
 
@@ -501,15 +507,21 @@ export default function SearchScreen({ navigation }) {
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.suggestionCard}
-                    onPress={() =>
+                    onPress={() => {
+                      trackSuggestionTelemetry({
+                        event: 'click',
+                        source: item.source || selectedSource || 'all',
+                        client: 'frontend',
+                        surface: 'search',
+                      }).catch(() => {});
                       navigation.navigate('MangaDetail', {
                         mangaId: item.id,
                         title: item.title,
                         sourceId: item.source || selectedSource || 'all',
                         mangaUrl: item.url,
                         coverUrl: item.cover || '',
-                      })
-                    }
+                      });
+                    }}
                   >
                     <Image
                       source={item.cover ? { uri: item.cover } : undefined}

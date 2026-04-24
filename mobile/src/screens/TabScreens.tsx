@@ -190,6 +190,12 @@ export function SearchScreen({ navigation }: any) {
       return;
     }
     setNextSuggestionRefreshAt(Date.now() + REFRESH_COOLDOWN_MS);
+    api.trackSuggestionTelemetry({
+      event: 'refresh',
+      source: preferredSearchSource,
+      client: 'mobile',
+      surface: 'search-discovery',
+    }).catch(() => {});
     suggestionsQuery.refetch();
   };
 
@@ -396,7 +402,15 @@ export function SearchScreen({ navigation }: any) {
                   <ManhwaCard
                     manhwa={item}
                     width={112}
-                    onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item })}
+                    onPress={() => {
+                      api.trackSuggestionTelemetry({
+                        event: 'click',
+                        source: item.source || preferredSearchSource,
+                        client: 'mobile',
+                        surface: 'search-discovery',
+                      }).catch(() => {});
+                      navigation.navigate('ManhwaDetail', { manhwa: item });
+                    }}
                   />
                 </View>
               )}

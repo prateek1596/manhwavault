@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Image, TouchableOpacity } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
-import { getSearchSuggestions } from '@services/api';
+import { getSearchSuggestions, trackSuggestionTelemetry } from '@services/api';
 
 export default function HomeScreen({ navigation }) {
   const { colors } = useTheme();
@@ -32,6 +32,12 @@ export default function HomeScreen({ navigation }) {
       return;
     }
     setNextRefreshAt(Date.now() + REFRESH_COOLDOWN_MS);
+    trackSuggestionTelemetry({
+      event: 'refresh',
+      source: 'all',
+      client: 'frontend',
+      surface: 'home',
+    }).catch(() => {});
     loadSuggestions({ showRefresh: true });
   };
 
@@ -200,13 +206,21 @@ export default function HomeScreen({ navigation }) {
                 key={`${item.id || item.url || item.title}-${index}`}
                 style={styles.card}
                 onPress={() =>
-                  navigation.navigate('MangaDetail', {
-                    mangaId: item.id,
-                    title: item.title,
-                    sourceId: item.source || 'all',
-                    mangaUrl: item.url,
-                    coverUrl: item.cover || '',
-                  })
+                  {
+                    trackSuggestionTelemetry({
+                      event: 'click',
+                      source: item.source || 'all',
+                      client: 'frontend',
+                      surface: 'home',
+                    }).catch(() => {});
+                    navigation.navigate('MangaDetail', {
+                      mangaId: item.id,
+                      title: item.title,
+                      sourceId: item.source || 'all',
+                      mangaUrl: item.url,
+                      coverUrl: item.cover || '',
+                    });
+                  }
                 }
               >
                 <Image

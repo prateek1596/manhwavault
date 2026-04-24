@@ -323,6 +323,19 @@ export const searchManhwaBySource = (
     );
   };
 
+  export const trackSuggestionTelemetry = (
+    options: { event: 'refresh' | 'click'; source?: string; client?: string; surface?: string }
+  ) =>
+    request<{ ok: boolean; event: string; source: string }>('/telemetry/suggestions/event', {
+      method: 'POST',
+      body: JSON.stringify({
+        event: options.event,
+        source: options.source ?? 'unknown',
+        client: options.client ?? 'mobile',
+        surface: options.surface ?? 'unknown',
+      }),
+    });
+
 export const getManhwaDetail = (url: string, source: string) =>
   request<any>(`/manhwa/detail?url=${encodeURIComponent(url)}&source=${source}`)
     .then(normalizeManhwa);
