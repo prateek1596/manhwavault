@@ -131,6 +131,16 @@ export async function getSearchSuggestions(params = {}) {
   return response.data || [];
 }
 
+export async function trackSuggestionTelemetry(params = {}) {
+  const response = await api.post('/telemetry/suggestions/event', {
+    event: params.event,
+    source: params.source || 'unknown',
+    client: params.client || 'frontend',
+    surface: params.surface || 'unknown',
+  });
+  return response.data;
+}
+
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {

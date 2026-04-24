@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 manager = ExtensionManager()
 scrapers: dict[str, BaseScraper] = {}
+suggestion_refresh_counters: Counter = Counter()
+suggestion_click_counters: Counter = Counter()
+suggestion_client_counters: Counter = Counter()
+suggestion_surface_counters: Counter = Counter()
 
 
 @asynccontextmanager
@@ -955,6 +959,13 @@ class SeriesEntry(BaseModel):
 class UpdatesRequest(BaseModel):
     series: List[SeriesEntry]
 
+
+class SuggestionTelemetryEvent(BaseModel):
+    event: str
+    source: str = "unknown"
+    client: str = "unknown"
+    surface: str = "unknown"
+
 @app.post("/updates")
 async def get_updates(body: UpdatesRequest):
     async def check_one(entry: SeriesEntry):
@@ -977,6 +988,59 @@ async def get_updates(body: UpdatesRequest):
 
     results = await asyncio.gather(*[check_one(e) for e in body.series])
     return results
+
+
+# ── Telemetry ────────────────────────────────────────────────────────────────
+
+@app.post("/telemetry/suggestions/event")
+async def track_suggestion_event(body: SuggestionTelemetryEvent):
+    event_name = (body.event or "").strip().lower()
+    source_name = (body.source or "unknown").strip() or "unknown"
+    client_name = (body.client or "unknown").strip() or "unknown"
+    surface_name = (body.surface or "unknown").strip() or "unknown"
+
+    if event_name not in {"refresh", "click"}:
+        raise HTTPException(400, "event must be one of: refresh, click")
+
+    if event_name == "refresh":
+        suggestion_refresh_counters[source_name] += 1
+    else:
+        suggestion_click_counters[source_name] += 1
+
+    suggestion_client_counters[client_name] += 1
+    suggestion_surface_counters[surface_name] += 1
+
+    return {
+        "ok": True,
+        "event": event_name,
+        "source": source_name,
+    }
+
+
+@app.get("/telemetry/suggestions")
+async def suggestion_telemetry():
+    sources = sorted(set(suggestion_refresh_counters.keys()) | set(suggestion_click_counters.keys()))
+    by_source = {
+        source: {
+            "refresh": suggestion_refresh_counters[source],
+            "click": suggestion_click_counters[source],
+        }
+        for source in sources
+    }
+
+    total_refresh = sum(suggestion_refresh_counters.values())
+    total_click = sum(suggestion_click_counters.values())
+
+    return {
+        "total": {
+            "refresh": total_refresh,
+            "click": total_click,
+            "events": total_refresh + total_click,
+        },
+        "bySource": by_source,
+        "byClient": dict(suggestion_client_counters),
+        "bySurface": dict(suggestion_surface_counters),
+    }
 
 
 # ── Extensions ────────────────────────────────────────────────────────────────
