@@ -151,6 +151,11 @@ export async function getSuggestionTelemetry() {
   };
 }
 
+export async function resetSuggestionTelemetry() {
+  const response = await api.post('/telemetry/suggestions/reset');
+  return response.data;
+}
+
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {

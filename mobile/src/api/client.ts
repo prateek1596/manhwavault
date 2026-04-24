@@ -344,6 +344,11 @@ export const searchManhwaBySource = (
       bySurface: Record<string, number>;
     }>('/telemetry/suggestions');
 
+export const resetSuggestionTelemetry = () =>
+  request<{ ok: boolean; reset: boolean }>('/telemetry/suggestions/reset', {
+    method: 'POST',
+  });
+
 export const getManhwaDetail = (url: string, source: string) =>
   request<any>(`/manhwa/detail?url=${encodeURIComponent(url)}&source=${source}`)
     .then(normalizeManhwa);

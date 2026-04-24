@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import useReaderSettings from '../hooks/useReaderSettings';
-import { getSuggestionTelemetry } from '@services/api';
+import { getSuggestionTelemetry, resetSuggestionTelemetry } from '@services/api';
 
 export default function SettingsScreen() {
   const { colors, isDarkMode, toggleTheme } = useTheme();
@@ -21,6 +21,16 @@ export default function SettingsScreen() {
       setTelemetryError(error?.message || 'Unable to load telemetry');
     } finally {
       setLoadingTelemetry(false);
+    }
+  };
+
+  const handleResetTelemetry = async () => {
+    setTelemetryError('');
+    try {
+      await resetSuggestionTelemetry();
+      await loadTelemetry();
+    } catch (error) {
+      setTelemetryError(error?.message || 'Unable to reset telemetry');
     }
   };
 
@@ -105,6 +115,11 @@ export default function SettingsScreen() {
       justifyContent: 'space-between',
       marginBottom: 10,
     },
+    telemetryActions: {
+      flexDirection: 'row',
+      gap: 10,
+      alignItems: 'center',
+    },
     telemetryTitle: {
       color: colors.text,
       fontSize: 13,
@@ -112,6 +127,11 @@ export default function SettingsScreen() {
     },
     telemetryRefresh: {
       color: colors.primary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    telemetryReset: {
+      color: colors.error,
       fontSize: 12,
       fontWeight: '700',
     },
@@ -239,9 +259,14 @@ export default function SettingsScreen() {
         <View style={styles.telemetryCard}>
           <View style={styles.telemetryHeader}>
             <Text style={styles.telemetryTitle}>Suggestion Events</Text>
-            <TouchableOpacity onPress={loadTelemetry}>
-              <Text style={styles.telemetryRefresh}>{loadingTelemetry ? 'Refreshing...' : 'Refresh'}</Text>
-            </TouchableOpacity>
+            <View style={styles.telemetryActions}>
+              <TouchableOpacity onPress={handleResetTelemetry}>
+                <Text style={styles.telemetryReset}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={loadTelemetry}>
+                <Text style={styles.telemetryRefresh}>{loadingTelemetry ? 'Refreshing...' : 'Refresh'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {telemetryError ? <Text style={styles.telemetryError}>{telemetryError}</Text> : null}
