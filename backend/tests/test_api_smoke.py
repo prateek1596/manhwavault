@@ -74,6 +74,7 @@ def fake_scrapers() -> Dict[str, BaseScraper]:
     return {
         "MangaDex": FakeScraper("MangaDex", "https://api.mangadex.org"),
         "Safe Source": FakeScraper("Safe Source", "https://safe.example"),
+        "Vault Picks": FakeScraper("Vault Picks", "https://vault.local"),
         "NSFW Source": FakeScraper("NSFW Source", "https://nsfw.example", nsfw=True),
     }
 
@@ -114,13 +115,13 @@ def test_health_and_extensions(client: TestClient):
 
     extensions = client.get("/extensions")
     assert extensions.status_code == 200
-    assert len(extensions.json()) == 3
+    assert len(extensions.json()) == 4
 
     stats = client.get("/extensions/stats")
     assert stats.status_code == 200
     stats_payload = stats.json()
-    assert stats_payload["total"] == 3
-    assert stats_payload["safe"] == 2
+    assert stats_payload["total"] == 4
+    assert stats_payload["safe"] == 3
     assert stats_payload["nsfw"] == 1
 
 
@@ -180,10 +181,24 @@ def test_search_by_source_and_updates_shape(client: TestClient):
     assert isinstance(payload[0]["newChapters"], list)
 
 
+def test_search_suggestions(client: TestClient):
+    suggestions = client.get("/search/suggestions")
+    assert suggestions.status_code == 200
+    payload = suggestions.json()
+    assert len(payload) >= 1
+    assert all("title" in item and "source" in item for item in payload)
+
+    filtered = client.get("/search/suggestions", params={"source": "Safe Source", "q": "tower"})
+    assert filtered.status_code == 200
+    items = filtered.json()
+    assert len(items) >= 1
+    assert all(item["source"] == "Safe Source" for item in items)
+
+
 def test_extension_action_endpoints(client: TestClient):
     reload_resp = client.post("/extensions/reload")
     assert reload_resp.status_code == 200
-    assert reload_resp.json()["loaded"] == 3
+    assert reload_resp.json()["loaded"] == 4
 
     install_resp = client.post("/extensions/install", params={"git_url": "https://github.com/example/ext-smoke"})
     assert install_resp.status_code == 200
