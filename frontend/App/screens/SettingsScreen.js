@@ -1,11 +1,44 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import useReaderSettings from '../hooks/useReaderSettings';
+import { getSuggestionTelemetry } from '@services/api';
 
 export default function SettingsScreen() {
   const { colors, isDarkMode, toggleTheme } = useTheme();
   const { settings, setReadingMode, setImageFit } = useReaderSettings();
+  const [telemetry, setTelemetry] = useState(null);
+  const [loadingTelemetry, setLoadingTelemetry] = useState(true);
+  const [telemetryError, setTelemetryError] = useState('');
+
+  const loadTelemetry = async () => {
+    setLoadingTelemetry(true);
+    setTelemetryError('');
+    try {
+      const data = await getSuggestionTelemetry();
+      setTelemetry(data);
+    } catch (error) {
+      setTelemetryError(error?.message || 'Unable to load telemetry');
+    } finally {
+      setLoadingTelemetry(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTelemetry();
+  }, []);
+
+  const sourceRows = useMemo(() => {
+    const bySource = telemetry?.bySource || {};
+    return Object.entries(bySource)
+      .map(([source, stats]) => ({
+        source,
+        refresh: Number(stats?.refresh || 0),
+        click: Number(stats?.click || 0),
+      }))
+      .sort((a, b) => (b.click + b.refresh) - (a.click + a.refresh))
+      .slice(0, 8);
+  }, [telemetry]);
 
   const styles = StyleSheet.create({
     container: {
@@ -57,6 +90,57 @@ export default function SettingsScreen() {
     },
     optionTextActive: {
       color: '#ffffff',
+    },
+    telemetryCard: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 12,
+      marginTop: 8,
+    },
+    telemetryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    telemetryTitle: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    telemetryRefresh: {
+      color: colors.primary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    telemetrySummary: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+      marginBottom: 10,
+    },
+    telemetryRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    telemetryRowSource: {
+      color: colors.text,
+      fontSize: 12,
+      flex: 1,
+      marginRight: 8,
+    },
+    telemetryRowStats: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    telemetryError: {
+      color: colors.error,
+      fontSize: 12,
+      marginBottom: 10,
     },
   });
 
@@ -148,6 +232,35 @@ export default function SettingsScreen() {
         <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
           ManhwaVault v0.1.0
         </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Telemetry (Debug)</Text>
+        <View style={styles.telemetryCard}>
+          <View style={styles.telemetryHeader}>
+            <Text style={styles.telemetryTitle}>Suggestion Events</Text>
+            <TouchableOpacity onPress={loadTelemetry}>
+              <Text style={styles.telemetryRefresh}>{loadingTelemetry ? 'Refreshing...' : 'Refresh'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {telemetryError ? <Text style={styles.telemetryError}>{telemetryError}</Text> : null}
+
+          <Text style={styles.telemetrySummary}>
+            Refresh: {telemetry?.total?.refresh ?? 0} | Click: {telemetry?.total?.click ?? 0} | Events: {telemetry?.total?.events ?? 0}
+          </Text>
+
+          {sourceRows.length === 0 && !loadingTelemetry ? (
+            <Text style={styles.telemetrySummary}>No source events yet.</Text>
+          ) : null}
+
+          {sourceRows.map((row) => (
+            <View key={row.source} style={styles.telemetryRow}>
+              <Text style={styles.telemetryRowSource} numberOfLines={1}>{row.source}</Text>
+              <Text style={styles.telemetryRowStats}>R {row.refresh} / C {row.click}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     </ScrollView>
   );

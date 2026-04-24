@@ -141,6 +141,16 @@ export async function trackSuggestionTelemetry(params = {}) {
   return response.data;
 }
 
+export async function getSuggestionTelemetry() {
+  const response = await api.get('/telemetry/suggestions');
+  return response.data || {
+    total: { refresh: 0, click: 0, events: 0 },
+    bySource: {},
+    byClient: {},
+    bySurface: {},
+  };
+}
+
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {

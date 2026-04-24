@@ -336,6 +336,14 @@ export const searchManhwaBySource = (
       }),
     });
 
+  export const getSuggestionTelemetry = () =>
+    request<{
+      total: { refresh: number; click: number; events: number };
+      bySource: Record<string, { refresh: number; click: number }>;
+      byClient: Record<string, number>;
+      bySurface: Record<string, number>;
+    }>('/telemetry/suggestions');
+
 export const getManhwaDetail = (url: string, source: string) =>
   request<any>(`/manhwa/detail?url=${encodeURIComponent(url)}&source=${source}`)
     .then(normalizeManhwa);
