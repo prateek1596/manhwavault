@@ -1043,6 +1043,15 @@ async def suggestion_telemetry():
     }
 
 
+@app.post("/telemetry/suggestions/reset")
+async def reset_suggestion_telemetry():
+    suggestion_refresh_counters.clear()
+    suggestion_click_counters.clear()
+    suggestion_client_counters.clear()
+    suggestion_surface_counters.clear()
+    return {"ok": True, "reset": True}
+
+
 # ── Extensions ────────────────────────────────────────────────────────────────
 
 @app.get("/extensions")

@@ -725,6 +725,21 @@ export function SettingsScreen() {
   } = useSettingsStore();
   const [backendInput, setBackendInput] = useState(backendUrl);
 
+  const telemetryQuery = useQuery({
+    queryKey: ['telemetry-suggestions'],
+    queryFn: api.getSuggestionTelemetry,
+    staleTime: 0,
+  });
+
+  const telemetrySources = Object.entries(telemetryQuery.data?.bySource ?? {})
+    .map(([name, stats]) => ({
+      name,
+      refresh: Number((stats as any)?.refresh ?? 0),
+      click: Number((stats as any)?.click ?? 0),
+    }))
+    .sort((a, b) => (b.refresh + b.click) - (a.refresh + a.click))
+    .slice(0, 8);
+
   useEffect(() => {
     setBackendInput(backendUrl);
   }, [backendUrl]);
@@ -862,6 +877,38 @@ export function SettingsScreen() {
               <Text style={label}>{q.charAt(0).toUpperCase() + q.slice(1)} quality</Text>
               {imageQuality === q && <Text style={{ color: theme.colors.primary }}>✓</Text>}
             </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Telemetry (Debug)</Text>
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={styles.settingRow}>
+            <View>
+              <Text style={label}>Suggestion events</Text>
+              <Text style={sub}>Refresh/click counters by source</Text>
+            </View>
+            <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={() => telemetryQuery.refetch()}>
+              <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>
+                {telemetryQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.telemetrySummaryRow}>
+            <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Refresh: {telemetryQuery.data?.total?.refresh ?? 0}</Text>
+            <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Click: {telemetryQuery.data?.total?.click ?? 0}</Text>
+            <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Events: {telemetryQuery.data?.total?.events ?? 0}</Text>
+          </View>
+
+          {telemetrySources.length === 0 && !telemetryQuery.isFetching && (
+            <Text style={[styles.telemetryEmpty, { color: theme.colors.textMuted }]}>No source telemetry yet.</Text>
+          )}
+
+          {telemetrySources.map((source) => (
+            <View key={source.name} style={styles.telemetryRow}>
+              <Text style={[styles.telemetrySource, { color: theme.colors.text }]} numberOfLines={1}>{source.name}</Text>
+              <Text style={[styles.telemetryStats, { color: theme.colors.textSecondary }]}>R {source.refresh} / C {source.click}</Text>
+            </View>
           ))}
         </View>
       </ScrollView>
@@ -1014,4 +1061,10 @@ const styles = StyleSheet.create({
   settingSub: { fontSize: 12, marginTop: 2 },
   modeToggle: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   limitChipWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2, gap: 8 },
+  telemetrySummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  telemetrySummaryText: { fontSize: 12, fontWeight: '600' },
+  telemetryEmpty: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  telemetryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
+  telemetrySource: { flex: 1, marginRight: 8, fontSize: 12, fontWeight: '600' },
+  telemetryStats: { fontSize: 12, fontWeight: '700' },
 });

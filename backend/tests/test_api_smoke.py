@@ -228,6 +228,16 @@ def test_suggestion_telemetry(client: TestClient):
     assert payload["bySource"]["Safe Source"]["refresh"] >= 1
     assert payload["bySource"]["Safe Source"]["click"] >= 1
 
+    reset = client.post("/telemetry/suggestions/reset")
+    assert reset.status_code == 200
+    assert reset.json()["ok"] is True
+
+    cleared = client.get("/telemetry/suggestions")
+    assert cleared.status_code == 200
+    cleared_payload = cleared.json()
+    assert cleared_payload["total"] == {"refresh": 0, "click": 0, "events": 0}
+    assert cleared_payload["bySource"] == {}
+
 
 def test_extension_action_endpoints(client: TestClient):
     reload_resp = client.post("/extensions/reload")
