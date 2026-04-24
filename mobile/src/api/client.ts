@@ -304,6 +304,25 @@ export const searchManhwaBySource = (
   });
 };
 
+  export const getSearchSuggestions = (
+    options?: { q?: string; source?: string; includeNsfw?: boolean; limit?: number; contentType?: 'manhwa' | 'all' }
+  ) => {
+    const params = new URLSearchParams({
+      source: options?.source ?? 'all',
+      include_nsfw: options?.includeNsfw ? 'true' : 'false',
+      limit: String(options?.limit ?? 12),
+      content_type: options?.contentType ?? 'manhwa',
+    });
+
+    if (options?.q && options.q.trim().length > 0) {
+      params.set('q', options.q.trim());
+    }
+
+    return request<any[]>(`/search/suggestions?${params.toString()}`).then((list) =>
+      (list ?? []).map(normalizeManhwa)
+    );
+  };
+
 export const getManhwaDetail = (url: string, source: string) =>
   request<any>(`/manhwa/detail?url=${encodeURIComponent(url)}&source=${source}`)
     .then(normalizeManhwa);

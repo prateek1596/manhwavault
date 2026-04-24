@@ -169,6 +169,20 @@ export function SearchScreen({ navigation }: any) {
   const flatResults = flatSearchQuery.data ?? [];
   const sourceGrid = sourceOptions.filter((src) => src.name !== 'all').slice(0, 12);
 
+  const suggestionsQuery = useQuery({
+    queryKey: ['search-suggestions', preferredSearchSource, includeNsfwSources],
+    queryFn: () =>
+      api.getSearchSuggestions({
+        source: preferredSearchSource,
+        includeNsfw: includeNsfwSources,
+        limit: 10,
+        contentType: 'manhwa',
+      }),
+    enabled: submitted.length === 0,
+    staleTime: 1000 * 60 * 3,
+  });
+  const suggestions = suggestionsQuery.data ?? [];
+
   const handleSearch = () => {
     const next = query.trim();
     if (!next) return;
@@ -336,6 +350,25 @@ export function SearchScreen({ navigation }: any) {
             <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>More</Text>
           </View>
           <Text style={[styles.discoveryText, { color: theme.colors.textSecondary }]}>Use search or pick a source below to explore quickly.</Text>
+
+          {suggestions.length > 0 && (
+            <FlatList
+              horizontal
+              data={suggestions}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.groupRowCards}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <View style={styles.groupCardWrap}>
+                  <ManhwaCard
+                    manhwa={item}
+                    width={112}
+                    onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item })}
+                  />
+                </View>
+              )}
+            />
+          )}
 
           {recentQueries.length > 0 && (
             <>

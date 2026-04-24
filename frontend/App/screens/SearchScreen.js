@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
-import { api } from '@services/api';
+import { api, getSearchSuggestions } from '@services/api';
 
 export default function SearchScreen({ navigation }) {
   const { colors } = useTheme();
@@ -9,6 +9,7 @@ export default function SearchScreen({ navigation }) {
   const [results, setResults] = useState([]);
   const [selectedSource, setSelectedSource] = useState('all');
   const [sourceOptions, setSourceOptions] = useState(['all']);
+  const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,6 +39,29 @@ export default function SearchScreen({ navigation }) {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSuggestions() {
+      try {
+        const data = await getSearchSuggestions({
+          source: selectedSource,
+          limit: 10,
+        });
+        if (mounted) {
+          setSuggestions(data);
+        }
+      } catch (suggestionErr) {
+        console.warn('Failed to load search suggestions:', suggestionErr?.message);
+      }
+    }
+
+    loadSuggestions();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedSource]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -270,6 +294,46 @@ export default function SearchScreen({ navigation }) {
       justifyContent: 'center',
       alignItems: 'center',
     },
+    suggestionBlock: {
+      marginTop: 8,
+    },
+    suggestionTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+      marginBottom: 10,
+    },
+    suggestionCard: {
+      width: 118,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      overflow: 'hidden',
+      marginRight: 10,
+    },
+    suggestionCover: {
+      width: 118,
+      height: 162,
+      backgroundColor: colors.background,
+    },
+    suggestionBody: {
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      gap: 4,
+    },
+    suggestionItemTitle: {
+      color: colors.text,
+      fontSize: 12,
+      fontWeight: '700',
+      lineHeight: 16,
+      minHeight: 32,
+    },
+    suggestionMeta: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontWeight: '600',
+    },
   });
 
   return (
@@ -334,6 +398,42 @@ export default function SearchScreen({ navigation }) {
         {!searching && !error && results.length === 0 && (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>Search for a title above to begin.</Text>
+          </View>
+        )}
+
+        {!searching && !error && results.length === 0 && suggestions.length > 0 && (
+          <View style={styles.suggestionBlock}>
+            <Text style={styles.suggestionTitle}>Suggestions from {selectedSource === 'all' ? 'all sources' : selectedSource}</Text>
+            <FlatList
+              horizontal
+              data={suggestions}
+              keyExtractor={(item, index) => `${item.id || item.url || item.title}-s-${index}`}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.suggestionCard}
+                  onPress={() =>
+                    navigation.navigate('MangaDetail', {
+                      mangaId: item.id,
+                      title: item.title,
+                      sourceId: item.source || selectedSource || 'all',
+                      mangaUrl: item.url,
+                      coverUrl: item.cover || '',
+                    })
+                  }
+                >
+                  <Image
+                    source={item.cover ? { uri: item.cover } : undefined}
+                    style={styles.suggestionCover}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.suggestionBody}>
+                    <Text style={styles.suggestionItemTitle} numberOfLines={2}>{item.title}</Text>
+                    <Text style={styles.suggestionMeta} numberOfLines={1}>{item.source || 'Unknown'}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
           </View>
         )}
         

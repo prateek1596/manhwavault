@@ -118,6 +118,19 @@ export const api = axios.create({
   timeout: 12000,
 });
 
+export async function getSearchSuggestions(params = {}) {
+  const response = await api.get('/search/suggestions', {
+    params: {
+      source: params.source || 'all',
+      content_type: params.contentType || 'manhwa',
+      include_nsfw: params.includeNsfw ?? true,
+      limit: params.limit || 12,
+      ...(params.q ? { q: params.q } : {}),
+    },
+  });
+  return response.data || [];
+}
+
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {
