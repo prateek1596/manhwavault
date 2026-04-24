@@ -1,22 +1,43 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import { api } from '@services/api';
-
-const SOURCE_MAP = {
-  all: 'all',
-  asura: 'Asura Scans',
-  flame: 'Flame Scans',
-  reaper: 'Reaper Scans',
-};
 
 export default function SearchScreen({ navigation }) {
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selectedSource, setSelectedSource] = useState('all');
+  const [sourceOptions, setSourceOptions] = useState(['all']);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSources() {
+      try {
+        const response = await api.get('/sources', {
+          params: { include_nsfw: true },
+        });
+        const names = (response.data || [])
+          .map((item) => item?.name)
+          .filter((name) => typeof name === 'string' && name.trim().length > 0)
+          .slice(0, 6);
+
+        if (mounted && names.length > 0) {
+          setSourceOptions(['all', ...names]);
+        }
+      } catch (loadErr) {
+        console.warn('Failed to load source list, using default source selection.', loadErr?.message);
+      }
+    }
+
+    loadSources();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -24,11 +45,10 @@ export default function SearchScreen({ navigation }) {
     setSearching(true);
     setError('');
     try {
-      const source = SOURCE_MAP[selectedSource] || 'all';
       const response = await api.get('/search', {
         params: {
           q: query.trim(),
-          source,
+          source: selectedSource,
           limit: 60,
           content_type: 'manhwa',
           include_nsfw: true,
@@ -41,7 +61,7 @@ export default function SearchScreen({ navigation }) {
         description: item.description || '',
         cover_url: item.cover_url || item.cover || '',
         url: item.url,
-        source: item.source || source,
+        source: item.source || selectedSource,
       }));
 
       setResults(normalized);
@@ -276,7 +296,7 @@ export default function SearchScreen({ navigation }) {
         </View>
         
         <View style={styles.sourceSelector}>
-          {['all', 'asura', 'flame', 'reaper'].map((source) => (
+          {sourceOptions.map((source) => (
             <TouchableOpacity
               key={source}
               style={[
@@ -291,7 +311,7 @@ export default function SearchScreen({ navigation }) {
                   selectedSource === source && styles.sourceButtonTextActive,
                 ]}
               >
-                {source.charAt(0).toUpperCase() + source.slice(1)}
+                {source === 'all' ? 'All' : source}
               </Text>
             </TouchableOpacity>
           ))}
@@ -330,7 +350,7 @@ export default function SearchScreen({ navigation }) {
                   navigation.navigate('MangaDetail', {
                     mangaId: item.id,
                     title: item.title,
-                    sourceId: item.source || SOURCE_MAP[selectedSource] || 'all',
+                    sourceId: item.source || selectedSource || 'all',
                     mangaUrl: item.url,
                     coverUrl: item.cover_url,
                   })
@@ -348,7 +368,7 @@ export default function SearchScreen({ navigation }) {
                   </Text>
                   <View style={styles.metaRow}>
                     <View style={styles.metaChip}>
-                      <Text style={styles.metaChipText}>From {item.source || SOURCE_MAP[selectedSource]}</Text>
+                      <Text style={styles.metaChipText}>From {item.source || selectedSource}</Text>
                     </View>
                     {item.url ? (
                       <View style={styles.metaChip}>

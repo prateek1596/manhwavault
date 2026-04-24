@@ -471,6 +471,53 @@ async def search_with_timeout(scraper: BaseScraper, query: str):
     except asyncio.TimeoutError:
         raise TimeoutError(f"Search timed out after {SEARCH_TIMEOUT_SECONDS}s")
 
+
+@app.get("/search/suggestions")
+async def search_suggestions(
+    q: str = "",
+    source: str = "all",
+    include_nsfw: bool = False,
+    limit: int = Query(12, ge=1, le=40),
+    content_type: str = Query("manhwa", pattern="^(manhwa|all)$"),
+):
+    """Return quick-pick suggestions for discovery surfaces in web/mobile clients."""
+    if not scrapers:
+        raise HTTPException(503, "No extensions installed. Install one first.")
+
+    seeded_queries = _build_query_variants(q) if q.strip() else [
+        "solo leveling",
+        "omniscient reader",
+        "murim",
+        "villainess",
+        "academy",
+    ]
+
+    if source == "all":
+        targets = [
+            s for s in sorted(scrapers.values(), key=lambda item: item.name.lower())
+            if include_nsfw or not getattr(s, "nsfw", False)
+        ]
+    else:
+        scraper = get_scraper(source)
+        if not include_nsfw and getattr(scraper, "nsfw", False):
+            raise HTTPException(403, f"Source '{source}' is NSFW. Set include_nsfw=true to use it.")
+        targets = [scraper]
+
+    collected = []
+    for query in seeded_queries:
+        results = await asyncio.gather(*[search_with_timeout(s, query) for s in targets], return_exceptions=True)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.warning(f"Suggestion search failed for {targets[i].name}: {result}")
+                continue
+            collected.extend(result[: min(8, limit)])
+
+        collected = _filter_content_type(_dedupe_results(collected), content_type)
+        if len(collected) >= limit:
+            break
+
+    return _interleave_by_source(collected)[:limit]
+
 @app.get("/search")
 async def search(
     q: str = Query(..., min_length=1),
@@ -631,6 +678,19 @@ async def search_by_source(
 
     variants = _build_query_variants(q)
     primary_query = variants[0]
+
+    fallback_seed_results = []
+    fallback_seed_scraper = _get_primary_index_scraper()
+    if fallback_seed_scraper:
+        for variant in variants:
+            try:
+                seeded = await search_with_timeout(fallback_seed_scraper, variant)
+                seeded = _filter_content_type(_dedupe_results(seeded), content_type)
+                if seeded:
+                    fallback_seed_results = seeded
+                    break
+            except Exception:
+                continue
 
     sources = [
         s for s in sorted(scrapers.values(), key=lambda item: item.name.lower())

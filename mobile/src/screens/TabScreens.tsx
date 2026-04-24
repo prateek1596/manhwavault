@@ -112,6 +112,7 @@ export function SearchScreen({ navigation }: any) {
   const theme = useAppTheme();
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
+  const [recentQueries, setRecentQueries] = useState<string[]>([]);
   const [showSourceMenu, setShowSourceMenu] = useState(false);
   const { width } = useWindowDimensions();
   const cardWidth = (width - 48) / 2;
@@ -172,6 +173,10 @@ export function SearchScreen({ navigation }: any) {
     const next = query.trim();
     if (!next) return;
     setSubmitted(next);
+    setRecentQueries((prev) => {
+      const deduped = prev.filter((item) => item.toLowerCase() !== next.toLowerCase());
+      return [next, ...deduped].slice(0, 6);
+    });
   };
 
   return (
@@ -331,6 +336,26 @@ export function SearchScreen({ navigation }: any) {
             <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>More</Text>
           </View>
           <Text style={[styles.discoveryText, { color: theme.colors.textSecondary }]}>Use search or pick a source below to explore quickly.</Text>
+
+          {recentQueries.length > 0 && (
+            <>
+              <View style={[styles.sectionHeaderRow, { marginTop: 12 }]}>
+                <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Recent searches</Text>
+              </View>
+              <View style={styles.limitChipWrap}>
+                {recentQueries.map((value) => (
+                  <Chip
+                    key={value}
+                    label={value}
+                    onPress={() => {
+                      setQuery(value);
+                      setSubmitted(value);
+                    }}
+                  />
+                ))}
+              </View>
+            </>
+          )}
 
           <View style={[styles.sectionHeaderRow, { marginTop: 16 }]}>
             <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Manga sources</Text>
