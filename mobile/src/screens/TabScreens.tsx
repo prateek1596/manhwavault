@@ -347,7 +347,11 @@ export function SearchScreen({ navigation }: any) {
         <ScrollView contentContainerStyle={styles.discoveryWrap}>
           <View style={styles.sectionHeaderRow}>
             <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Suggestions</Text>
-            <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>More</Text>
+            <TouchableOpacity onPress={() => suggestionsQuery.refetch()}>
+              <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>
+                {suggestionsQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+              </Text>
+            </TouchableOpacity>
           </View>
           <Text style={[styles.discoveryText, { color: theme.colors.textSecondary }]}>Use search or pick a source below to explore quickly.</Text>
 

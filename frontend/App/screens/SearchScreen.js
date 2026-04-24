@@ -10,8 +10,28 @@ export default function SearchScreen({ navigation }) {
   const [selectedSource, setSelectedSource] = useState('all');
   const [sourceOptions, setSourceOptions] = useState(['all']);
   const [suggestions, setSuggestions] = useState([]);
+  const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
+
+  const loadSuggestions = async ({ showRefresh = false } = {}) => {
+    if (showRefresh) {
+      setRefreshingSuggestions(true);
+    }
+    try {
+      const data = await getSearchSuggestions({
+        source: selectedSource,
+        limit: 10,
+      });
+      setSuggestions(data);
+    } catch (suggestionErr) {
+      console.warn('Failed to load search suggestions:', suggestionErr?.message);
+    } finally {
+      if (showRefresh) {
+        setRefreshingSuggestions(false);
+      }
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -42,20 +62,6 @@ export default function SearchScreen({ navigation }) {
 
   useEffect(() => {
     let mounted = true;
-
-    async function loadSuggestions() {
-      try {
-        const data = await getSearchSuggestions({
-          source: selectedSource,
-          limit: 10,
-        });
-        if (mounted) {
-          setSuggestions(data);
-        }
-      } catch (suggestionErr) {
-        console.warn('Failed to load search suggestions:', suggestionErr?.message);
-      }
-    }
 
     loadSuggestions();
     return () => {
@@ -301,7 +307,25 @@ export default function SearchScreen({ navigation }) {
       color: colors.text,
       fontSize: 14,
       fontWeight: '700',
+    },
+    suggestionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       marginBottom: 10,
+    },
+    refreshButton: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    refreshButtonText: {
+      color: colors.primary,
+      fontSize: 11,
+      fontWeight: '700',
     },
     suggestionCard: {
       width: 118,
@@ -403,7 +427,12 @@ export default function SearchScreen({ navigation }) {
 
         {!searching && !error && results.length === 0 && suggestions.length > 0 && (
           <View style={styles.suggestionBlock}>
-            <Text style={styles.suggestionTitle}>Suggestions from {selectedSource === 'all' ? 'all sources' : selectedSource}</Text>
+            <View style={styles.suggestionHeader}>
+              <Text style={styles.suggestionTitle}>Suggestions from {selectedSource === 'all' ? 'all sources' : selectedSource}</Text>
+              <TouchableOpacity style={styles.refreshButton} onPress={() => loadSuggestions({ showRefresh: true })}>
+                <Text style={styles.refreshButtonText}>{refreshingSuggestions ? 'Refreshing...' : 'Refresh'}</Text>
+              </TouchableOpacity>
+            </View>
             <FlatList
               horizontal
               data={suggestions}

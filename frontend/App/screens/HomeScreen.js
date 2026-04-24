@@ -1,36 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Image, TouchableOpacity } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import { getSearchSuggestions } from '@services/api';
 
 export default function HomeScreen({ navigation }) {
   const { colors } = useTheme();
+  const REFRESH_COOLDOWN_MS = 1500;
   const [loading, setLoading] = useState(true);
   const [suggestions, setSuggestions] = useState([]);
+  const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
+  const [nextRefreshAt, setNextRefreshAt] = useState(0);
+
+  const loadSuggestions = useCallback(async ({ showRefresh = false } = {}) => {
+    if (showRefresh) {
+      setRefreshingSuggestions(true);
+    }
+    try {
+      const items = await getSearchSuggestions({ limit: 12 });
+      setSuggestions(items);
+    } catch (error) {
+      console.warn('Failed to load home suggestions:', error?.message);
+    } finally {
+      if (showRefresh) {
+        setRefreshingSuggestions(false);
+      }
+    }
+  }, []);
+
+  const handleRefreshSuggestions = () => {
+    if (refreshingSuggestions || Date.now() < nextRefreshAt) {
+      return;
+    }
+    setNextRefreshAt(Date.now() + REFRESH_COOLDOWN_MS);
+    loadSuggestions({ showRefresh: true });
+  };
 
   useEffect(() => {
     let mounted = true;
 
-    async function loadSuggestions() {
-      try {
-        const items = await getSearchSuggestions({ limit: 12 });
-        if (mounted) {
-          setSuggestions(items);
-        }
-      } catch (error) {
-        console.warn('Failed to load home suggestions:', error?.message);
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+    loadSuggestions().finally(() => {
+      if (mounted) {
+        setLoading(false);
       }
-    }
-
-    loadSuggestions();
+    });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadSuggestions]);
 
   const styles = StyleSheet.create({
     container: {
@@ -44,8 +60,30 @@ export default function HomeScreen({ navigation }) {
       fontSize: 18,
       fontWeight: 'bold',
       color: colors.text,
-      marginBottom: 12,
+      marginBottom: 0,
       marginTop: 16,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    refreshButton: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    refreshButtonText: {
+      color: colors.primary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    refreshButtonDisabled: {
+      opacity: 0.5,
     },
     sectionSub: {
       color: colors.textSecondary,
@@ -89,6 +127,26 @@ export default function HomeScreen({ navigation }) {
       fontSize: 11,
       fontWeight: '600',
     },
+    skeletonCard: {
+      width: 128,
+      borderRadius: 16,
+      borderColor: colors.border,
+      borderWidth: 1,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+    },
+    skeletonCover: {
+      width: '100%',
+      height: 176,
+      backgroundColor: colors.surface,
+      opacity: 0.7,
+    },
+    skeletonTextLine: {
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: colors.border,
+      marginBottom: 8,
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
@@ -107,8 +165,31 @@ export default function HomeScreen({ navigation }) {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.sectionTitle}>Trending Now</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Trending Now</Text>
+          <TouchableOpacity
+            style={[styles.refreshButton, (refreshingSuggestions || Date.now() < nextRefreshAt) && styles.refreshButtonDisabled]}
+            onPress={handleRefreshSuggestions}
+            disabled={refreshingSuggestions || Date.now() < nextRefreshAt}
+          >
+            <Text style={styles.refreshButtonText}>{refreshingSuggestions ? 'Refreshing...' : 'Refresh'}</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.sectionSub}>Live picks from your loaded backend sources.</Text>
+
+        {(loading || refreshingSuggestions) && suggestions.length === 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rowScroller} contentContainerStyle={styles.rowContent}>
+            {[0, 1, 2, 3].map((idx) => (
+              <View key={`home-skeleton-${idx}`} style={styles.skeletonCard}>
+                <View style={styles.skeletonCover} />
+                <View style={styles.cardBody}>
+                  <View style={[styles.skeletonTextLine, { width: '90%' }]} />
+                  <View style={[styles.skeletonTextLine, { width: '68%', marginBottom: 0 }]} />
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
 
         {suggestions.length === 0 ? (
           <Text style={styles.sectionSub}>No suggestions available yet.</Text>

@@ -171,6 +171,34 @@ def _build_query_variants(query: str) -> list[str]:
     return variants[:5]
 
 
+def _suggestion_seeds_for_source(source_name: str, content_type: str) -> list[str]:
+    lower_name = (source_name or "").lower()
+    generic_manhwa = ["solo leveling", "murim", "villainess", "academy", "regressor"]
+    generic_all = ["action", "romance", "adventure", "fantasy"]
+    seeds = generic_manhwa if content_type == "manhwa" else generic_all
+
+    source_hints = {
+        "asura": ["murim", "regressor", "return of"],
+        "reaper": ["player", "tower", "hunter"],
+        "flame": ["academy", "magic", "action"],
+        "toonily": ["romance", "drama", "webtoon"],
+        "ggmanga": ["action", "adventure", "fantasy"],
+        "mangadex": ["solo leveling", "omniscient reader", "martial"],
+        "vault picks": ["solo leveling", "latna", "returning hero"],
+    }
+
+    tuned = []
+    for key, values in source_hints.items():
+        if key in lower_name:
+            tuned.extend(values)
+
+    if not tuned:
+        tuned = seeds[:3]
+
+    merged = tuned + seeds
+    return list(dict.fromkeys(merged))[:8]
+
+
 def _dedupe_results(items: list) -> list:
     seen = set()
     deduped = []
@@ -484,24 +512,28 @@ async def search_suggestions(
     if not scrapers:
         raise HTTPException(503, "No extensions installed. Install one first.")
 
-    seeded_queries = _build_query_variants(q) if q.strip() else [
-        "solo leveling",
-        "omniscient reader",
-        "murim",
-        "villainess",
-        "academy",
-    ]
-
     if source == "all":
         targets = [
             s for s in sorted(scrapers.values(), key=lambda item: item.name.lower())
             if include_nsfw or not getattr(s, "nsfw", False)
         ]
+        targets = targets[:12]
     else:
         scraper = get_scraper(source)
         if not include_nsfw and getattr(scraper, "nsfw", False):
             raise HTTPException(403, f"Source '{source}' is NSFW. Set include_nsfw=true to use it.")
         targets = [scraper]
+
+    if q.strip():
+        seeded_queries = _build_query_variants(q)
+    elif source == "all":
+        seeds = []
+        for target in targets[:6]:
+            seeds.extend(_suggestion_seeds_for_source(target.name, content_type)[:2])
+        seeds.extend(["solo leveling", "omniscient reader", "murim", "villainess"])
+        seeded_queries = list(dict.fromkeys(seeds))[:8]
+    else:
+        seeded_queries = _suggestion_seeds_for_source(source, content_type)
 
     collected = []
     for query in seeded_queries:
