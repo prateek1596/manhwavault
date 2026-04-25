@@ -115,20 +115,39 @@ console.log('[API] Fallback URLs:', FALLBACK_API_BASE_URLS);
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 12000,
+  timeout: 25000,
 });
 
 export async function getSearchSuggestions(params = {}) {
-  const response = await api.get('/search/suggestions', {
-    params: {
-      source: params.source || 'all',
-      content_type: params.contentType || 'manhwa',
-      include_nsfw: params.includeNsfw ?? true,
-      limit: params.limit || 12,
-      ...(params.q ? { q: params.q } : {}),
-    },
-  });
-  return response.data || [];
+  const requestParams = {
+    source: params.source || 'all',
+    content_type: params.contentType || 'manhwa',
+    include_nsfw: params.includeNsfw ?? true,
+    limit: params.limit || 12,
+    ...(params.q ? { q: params.q } : {}),
+  };
+
+  try {
+    const response = await api.get('/search/suggestions', {
+      params: requestParams,
+    });
+    return response.data || [];
+  } catch (error) {
+    const isAllSource = requestParams.source === 'all';
+    const isTimeout = error?.code === 'ECONNABORTED';
+    if (!isAllSource || !isTimeout) {
+      throw error;
+    }
+
+    // Fallback to deterministic bundled source when all-source suggestions are too slow.
+    const response = await api.get('/search/suggestions', {
+      params: {
+        ...requestParams,
+        source: 'Vault Picks',
+      },
+    });
+    return response.data || [];
+  }
 }
 
 export async function trackSuggestionTelemetry(params = {}) {
@@ -177,14 +196,17 @@ api.interceptors.response.use(
   async (error) => {
     const cfg = error?.config;
     const isNetworkError = !error?.response && (error?.code === 'ERR_NETWORK' || String(error?.message || '').includes('Network Error'));
+    const status = Number(error?.response?.status || 0);
+    const isServerError = status >= 500;
 
-    if (cfg && isNetworkError) {
-      const tried = cfg.__triedBaseUrls || [];
+    if (cfg && (isNetworkError || isServerError)) {
+      const tried = cfg.__triedBaseUrls || (cfg.baseURL ? [cfg.baseURL] : []);
       const nextBase = FALLBACK_API_BASE_URLS.find((u) => !tried.includes(u));
 
       if (nextBase) {
         const nextTried = [...tried, nextBase];
-        console.log(`[API Retry] Network error. Retrying ${cfg.url} via ${nextBase}`);
+        const reason = isServerError ? `HTTP ${status}` : 'network error';
+        console.log(`[API Retry] ${reason}. Retrying ${cfg.url} via ${nextBase}`);
         return axios.request({
           ...cfg,
           baseURL: nextBase,
