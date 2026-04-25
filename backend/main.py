@@ -1,5 +1,6 @@
 import asyncio
-from collections import Counter
+from collections import Counter, defaultdict, deque
+from datetime import datetime, timezone
 import logging
 import re
 import string
@@ -25,6 +26,9 @@ suggestion_refresh_counters: Counter = Counter()
 suggestion_click_counters: Counter = Counter()
 suggestion_client_counters: Counter = Counter()
 suggestion_surface_counters: Counter = Counter()
+suggestion_client_event_counters: defaultdict[str, Counter] = defaultdict(Counter)
+suggestion_surface_event_counters: defaultdict[str, Counter] = defaultdict(Counter)
+suggestion_recent_events: deque = deque(maxlen=100)
 
 
 @asynccontextmanager
@@ -540,17 +544,30 @@ async def search_suggestions(
         seeded_queries = _suggestion_seeds_for_source(source, content_type)
 
     collected = []
+    deferred = []
+    source_counts: Counter = Counter()
+    per_source_cap = max(1, min(4, (limit + 3) // 4)) if source == "all" else limit
+
     for query in seeded_queries:
         results = await asyncio.gather(*[search_with_timeout(s, query) for s in targets], return_exceptions=True)
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.warning(f"Suggestion search failed for {targets[i].name}: {result}")
                 continue
-            collected.extend(result[: min(8, limit)])
+            for item in result[: min(8, limit)]:
+                source_name = (item.get("source") if isinstance(item, dict) else getattr(item, "source", "unknown")) or "unknown"
+                if source == "all" and source_counts[source_name] >= per_source_cap:
+                    deferred.append(item)
+                    continue
+                collected.append(item)
+                source_counts[source_name] += 1
 
         collected = _filter_content_type(_dedupe_results(collected), content_type)
         if len(collected) >= limit:
             break
+
+    if len(collected) < limit and deferred:
+        collected = _filter_content_type(_dedupe_results(collected + deferred), content_type)
 
     return _interleave_by_source(collected)[:limit]
 
@@ -1009,11 +1026,27 @@ async def track_suggestion_event(body: SuggestionTelemetryEvent):
 
     suggestion_client_counters[client_name] += 1
     suggestion_surface_counters[surface_name] += 1
+    suggestion_client_event_counters[client_name][event_name] += 1
+    suggestion_surface_event_counters[surface_name][event_name] += 1
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    suggestion_recent_events.append(
+        {
+            "event": event_name,
+            "source": source_name,
+            "client": client_name,
+            "surface": surface_name,
+            "timestamp": timestamp,
+        }
+    )
 
     return {
         "ok": True,
         "event": event_name,
         "source": source_name,
+        "client": client_name,
+        "surface": surface_name,
+        "timestamp": timestamp,
     }
 
 
@@ -1031,15 +1064,54 @@ async def suggestion_telemetry():
     total_refresh = sum(suggestion_refresh_counters.values())
     total_click = sum(suggestion_click_counters.values())
 
+    by_client_detailed = {
+        name: {
+            "events": suggestion_client_counters[name],
+            "refresh": counters["refresh"],
+            "click": counters["click"],
+        }
+        for name, counters in suggestion_client_event_counters.items()
+    }
+
+    by_surface_detailed = {
+        name: {
+            "events": suggestion_surface_counters[name],
+            "refresh": counters["refresh"],
+            "click": counters["click"],
+        }
+        for name, counters in suggestion_surface_event_counters.items()
+    }
+
+    top_sources = sorted(
+        (
+            {
+                "name": source,
+                "refresh": stats["refresh"],
+                "click": stats["click"],
+                "events": stats["refresh"] + stats["click"],
+            }
+            for source, stats in by_source.items()
+        ),
+        key=lambda item: item["events"],
+        reverse=True,
+    )[:8]
+
     return {
         "total": {
             "refresh": total_refresh,
             "click": total_click,
             "events": total_refresh + total_click,
+            "sources": len(by_source),
+            "clients": len(by_client_detailed),
+            "surfaces": len(by_surface_detailed),
         },
         "bySource": by_source,
         "byClient": dict(suggestion_client_counters),
         "bySurface": dict(suggestion_surface_counters),
+        "byClientDetailed": by_client_detailed,
+        "bySurfaceDetailed": by_surface_detailed,
+        "topSources": top_sources,
+        "recent": list(reversed(suggestion_recent_events)),
     }
 
 
@@ -1049,6 +1121,9 @@ async def reset_suggestion_telemetry():
     suggestion_click_counters.clear()
     suggestion_client_counters.clear()
     suggestion_surface_counters.clear()
+    suggestion_client_event_counters.clear()
+    suggestion_surface_event_counters.clear()
+    suggestion_recent_events.clear()
     return {"ok": True, "reset": True}
 
 

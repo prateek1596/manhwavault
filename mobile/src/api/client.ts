@@ -338,10 +338,14 @@ export const searchManhwaBySource = (
 
   export const getSuggestionTelemetry = () =>
     request<{
-      total: { refresh: number; click: number; events: number };
+      total: { refresh: number; click: number; events: number; sources?: number; clients?: number; surfaces?: number };
       bySource: Record<string, { refresh: number; click: number }>;
       byClient: Record<string, number>;
       bySurface: Record<string, number>;
+      byClientDetailed?: Record<string, { events: number; refresh: number; click: number }>;
+      bySurfaceDetailed?: Record<string, { events: number; refresh: number; click: number }>;
+      topSources?: Array<{ name: string; refresh: number; click: number; events: number }>;
+      recent?: Array<{ event: string; source: string; client: string; surface: string; timestamp: string }>;
     }>('/telemetry/suggestions');
 
 export const resetSuggestionTelemetry = () =>

@@ -887,11 +887,22 @@ export function SettingsScreen() {
               <Text style={label}>Suggestion events</Text>
               <Text style={sub}>Refresh/click counters by source</Text>
             </View>
-            <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={() => telemetryQuery.refetch()}>
-              <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>
-                {telemetryQuery.isFetching ? 'Refreshing...' : 'Refresh'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.telemetryActionsRow}>
+              <TouchableOpacity
+                style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]}
+                onPress={async () => {
+                  await api.resetSuggestionTelemetry();
+                  telemetryQuery.refetch();
+                }}
+              >
+                <Text style={[styles.backendUrlGhostText, { color: theme.colors.danger }]}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={() => telemetryQuery.refetch()}>
+                <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>
+                  {telemetryQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.telemetrySummaryRow}>
@@ -1064,6 +1075,7 @@ const styles = StyleSheet.create({
   telemetrySummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
   telemetrySummaryText: { fontSize: 12, fontWeight: '600' },
   telemetryEmpty: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  telemetryActionsRow: { flexDirection: 'row', gap: 8 },
   telemetryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
   telemetrySource: { flex: 1, marginRight: 8, fontSize: 12, fontWeight: '600' },
   telemetryStats: { fontSize: 12, fontWeight: '700' },
