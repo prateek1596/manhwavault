@@ -7,32 +7,20 @@
       "**/*"
     ],
     "ios": {
-      "supportsTabletMode": true,
+      "supportsTablet": true,
       "bundleIdentifier": "com.manhwavault.app"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
-      },
       "package": "com.manhwavault.app",
-      "usesCleartextTraffic": true,
       "permissions": [
         "READ_EXTERNAL_STORAGE",
         "INTERNET"
       ]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
+    "web": {},
     "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#ffffff"
-        }
-      ]
+      "expo-notifications",
+      "expo-font"
     ],
     "scheme": "manhwavault",
     "orientation": "default"

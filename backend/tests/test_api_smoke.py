@@ -1,4 +1,5 @@
 from typing import Dict, List
+from collections import Counter
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +29,18 @@ class FakeScraper(BaseScraper):
                 status="ongoing",
                 genres=["Action", "Manhwa"],
                 description="Synthetic smoke-test entry",
-            )
+            ),
+            Manhwa(
+                id=f"{self.name}-{slug}-alt",
+                title=f"{self.name} {query} Alt",
+                url=f"{self.base_url}/series/{slug}-alt",
+                cover=f"{self.base_url}/cover-alt.jpg",
+                latest_chapter="Chapter 9",
+                source=self.name,
+                status="ongoing",
+                genres=["Action", "Manhwa"],
+                description="Synthetic smoke-test entry alt",
+            ),
         ]
 
     async def get_detail(self, manhwa_url: str) -> Manhwa:
@@ -187,6 +199,10 @@ def test_search_suggestions(client: TestClient):
     payload = suggestions.json()
     assert len(payload) >= 1
     assert all("title" in item and "source" in item for item in payload)
+    sources = [item["source"] for item in payload]
+    assert len(set(sources)) >= 2
+    source_counts = Counter(sources)
+    assert max(source_counts.values()) <= 4
 
     filtered = client.get("/search/suggestions", params={"source": "Safe Source", "q": "tower"})
     assert filtered.status_code == 200
@@ -227,6 +243,15 @@ def test_suggestion_telemetry(client: TestClient):
     assert payload["total"]["click"] >= 1
     assert payload["bySource"]["Safe Source"]["refresh"] >= 1
     assert payload["bySource"]["Safe Source"]["click"] >= 1
+    assert payload["total"]["sources"] >= 1
+    assert payload["total"]["clients"] >= 1
+    assert payload["total"]["surfaces"] >= 1
+    assert payload["byClientDetailed"]["frontend"]["refresh"] >= 1
+    assert payload["byClientDetailed"]["mobile"]["click"] >= 1
+    assert payload["bySurfaceDetailed"]["search"]["refresh"] >= 1
+    assert payload["bySurfaceDetailed"]["search-discovery"]["click"] >= 1
+    assert len(payload["topSources"]) >= 1
+    assert len(payload["recent"]) >= 2
 
     reset = client.post("/telemetry/suggestions/reset")
     assert reset.status_code == 200
@@ -235,8 +260,12 @@ def test_suggestion_telemetry(client: TestClient):
     cleared = client.get("/telemetry/suggestions")
     assert cleared.status_code == 200
     cleared_payload = cleared.json()
-    assert cleared_payload["total"] == {"refresh": 0, "click": 0, "events": 0}
+    assert cleared_payload["total"] == {"refresh": 0, "click": 0, "events": 0, "sources": 0, "clients": 0, "surfaces": 0}
     assert cleared_payload["bySource"] == {}
+    assert cleared_payload["byClientDetailed"] == {}
+    assert cleared_payload["bySurfaceDetailed"] == {}
+    assert cleared_payload["topSources"] == []
+    assert cleared_payload["recent"] == []
 
 
 def test_extension_action_endpoints(client: TestClient):
