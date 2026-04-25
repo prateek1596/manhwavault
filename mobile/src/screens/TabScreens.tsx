@@ -740,6 +740,28 @@ export function SettingsScreen() {
     .sort((a, b) => (b.refresh + b.click) - (a.refresh + a.click))
     .slice(0, 8);
 
+  const telemetryClients = Object.entries(telemetryQuery.data?.byClientDetailed ?? {})
+    .map(([name, stats]) => ({
+      name,
+      events: Number((stats as any)?.events ?? 0),
+      refresh: Number((stats as any)?.refresh ?? 0),
+      click: Number((stats as any)?.click ?? 0),
+    }))
+    .sort((a, b) => b.events - a.events)
+    .slice(0, 5);
+
+  const telemetrySurfaces = Object.entries(telemetryQuery.data?.bySurfaceDetailed ?? {})
+    .map(([name, stats]) => ({
+      name,
+      events: Number((stats as any)?.events ?? 0),
+      refresh: Number((stats as any)?.refresh ?? 0),
+      click: Number((stats as any)?.click ?? 0),
+    }))
+    .sort((a, b) => b.events - a.events)
+    .slice(0, 5);
+
+  const telemetryRecent = (telemetryQuery.data?.recent ?? []).slice(0, 6);
+
   useEffect(() => {
     setBackendInput(backendUrl);
   }, [backendUrl]);
@@ -909,6 +931,9 @@ export function SettingsScreen() {
             <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Refresh: {telemetryQuery.data?.total?.refresh ?? 0}</Text>
             <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Click: {telemetryQuery.data?.total?.click ?? 0}</Text>
             <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Events: {telemetryQuery.data?.total?.events ?? 0}</Text>
+            <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Sources: {telemetryQuery.data?.total?.sources ?? 0}</Text>
+            <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Clients: {telemetryQuery.data?.total?.clients ?? 0}</Text>
+            <Text style={[styles.telemetrySummaryText, { color: theme.colors.textSecondary }]}>Surfaces: {telemetryQuery.data?.total?.surfaces ?? 0}</Text>
           </View>
 
           {telemetrySources.length === 0 && !telemetryQuery.isFetching && (
@@ -921,6 +946,46 @@ export function SettingsScreen() {
               <Text style={[styles.telemetryStats, { color: theme.colors.textSecondary }]}>R {source.refresh} / C {source.click}</Text>
             </View>
           ))}
+
+          {telemetryClients.length > 0 && (
+            <View style={styles.telemetrySectionWrap}>
+              <Text style={[styles.telemetrySectionLabel, { color: theme.colors.textMuted }]}>Top clients</Text>
+              {telemetryClients.map((client) => (
+                <View key={client.name} style={styles.telemetryRow}>
+                  <Text style={[styles.telemetrySource, { color: theme.colors.text }]} numberOfLines={1}>{client.name}</Text>
+                  <Text style={[styles.telemetryStats, { color: theme.colors.textSecondary }]}>E {client.events} / R {client.refresh} / C {client.click}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {telemetrySurfaces.length > 0 && (
+            <View style={styles.telemetrySectionWrap}>
+              <Text style={[styles.telemetrySectionLabel, { color: theme.colors.textMuted }]}>Top surfaces</Text>
+              {telemetrySurfaces.map((surface) => (
+                <View key={surface.name} style={styles.telemetryRow}>
+                  <Text style={[styles.telemetrySource, { color: theme.colors.text }]} numberOfLines={1}>{surface.name}</Text>
+                  <Text style={[styles.telemetryStats, { color: theme.colors.textSecondary }]}>E {surface.events} / R {surface.refresh} / C {surface.click}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {telemetryRecent.length > 0 && (
+            <View style={styles.telemetrySectionWrap}>
+              <Text style={[styles.telemetrySectionLabel, { color: theme.colors.textMuted }]}>Recent events</Text>
+              {telemetryRecent.map((item, index) => (
+                <View key={`${item.timestamp}-${item.source}-${index}`} style={styles.telemetryRow}>
+                  <Text style={[styles.telemetrySource, { color: theme.colors.text }]} numberOfLines={1}>
+                    {item.event.toUpperCase()} · {item.source}
+                  </Text>
+                  <Text style={[styles.telemetryStats, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                    {item.client} / {item.surface}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -1076,6 +1141,8 @@ const styles = StyleSheet.create({
   telemetrySummaryText: { fontSize: 12, fontWeight: '600' },
   telemetryEmpty: { fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 },
   telemetryActionsRow: { flexDirection: 'row', gap: 8 },
+  telemetrySectionWrap: { paddingTop: 4, paddingBottom: 2 },
+  telemetrySectionLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.7, paddingHorizontal: 16, paddingBottom: 4 },
   telemetryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
   telemetrySource: { flex: 1, marginRight: 8, fontSize: 12, fontWeight: '600' },
   telemetryStats: { fontSize: 12, fontWeight: '700' },

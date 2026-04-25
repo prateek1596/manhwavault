@@ -41,11 +41,12 @@ Backend extensions live in `backend/extensions/*` and must include:
 - `extension.json`
 - scraper entry module (for example `scraper.py`)
 
-A bundled sample deterministic source is included:
+A bundled sample deterministic sources are included:
 
 - `backend/extensions/ext-vault-picks`
+- `backend/extensions/ext-vault-trending`
 
-This source helps with local UI/testing flows even when public sources are rate-limited.
+These sources help with local UI/testing flows even when public sources are rate-limited.
 
 ## Tests
 

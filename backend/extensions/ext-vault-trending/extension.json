@@ -1,0 +1,9 @@
+{
+  "name": "Vault Trending",
+  "version": "1.0.0",
+  "base_url": "https://trending.vault.local",
+  "language": "en",
+  "nsfw": false,
+  "entry": "scraper.py",
+  "class": "VaultTrendingScraper"
+}
