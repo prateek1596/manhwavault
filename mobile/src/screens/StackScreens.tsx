@@ -451,7 +451,7 @@ export function DownloadsScreen({ navigation }: any) {
             <View style={styles.downloadActionsRow}>
               <TouchableOpacity
                 style={[styles.downloadActionBtn, { borderColor: theme.colors.border }]}
-                onPress={() => navigation.navigate('Reader', { manhwa: item.manhwa, chapter: { id: 'resume', title: 'Continue reading', url: item.manhwa.url, number: item.lastReadChapter ?? 0 }, chapterList: [] })}
+                onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item.manhwa })}
               >
                 <Text style={[styles.downloadActionText, { color: theme.colors.textSecondary }]}>Open</Text>
               </TouchableOpacity>

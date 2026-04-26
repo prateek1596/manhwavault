@@ -111,7 +111,15 @@ export function LibraryScreen({ navigation }: any) {
           ))}
         </ScrollView>
 
-        <Text style={[styles.sectionHead, { color: theme.colors.textSecondary }]}>Recent</Text>
+        <View style={styles.libraryHeaderRow}>
+          <Text style={[styles.sectionHead, { color: theme.colors.textSecondary, marginBottom: 0 }]}>Recent</Text>
+          <TouchableOpacity
+            style={[styles.libraryHeaderBtn, { borderColor: theme.colors.border }]}
+            onPress={() => navigation.navigate('Downloads')}
+          >
+            <Text style={[styles.libraryHeaderBtnText, { color: theme.colors.textSecondary }]}>Downloads View</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {filteredLibrary.length === 0 ? (
@@ -172,6 +180,9 @@ export function SearchScreen({ navigation }: any) {
     recentSearches,
     addRecentSearch,
     clearRecentSearches,
+    favoriteSources,
+    toggleFavoriteSource,
+    clearFavoriteSources,
   } = useSettingsStore();
 
   const sourcesQuery = useQuery({
@@ -212,12 +223,26 @@ export function SearchScreen({ navigation }: any) {
     return [all, ...(sourcesQuery.data ?? [])];
   }, [sourcesQuery.data]);
 
+  const favoriteSourceSet = useMemo(() => new Set(favoriteSources), [favoriteSources]);
+
   const isSearchingAll = preferredSearchSource === 'all';
   const loading = isSearchingAll ? groupedSearchQuery.isFetching : flatSearchQuery.isFetching;
   const searchError = isSearchingAll ? groupedSearchQuery.error : flatSearchQuery.error;
   const groupedResults = groupedSearchQuery.data ?? [];
   const flatResults = flatSearchQuery.data ?? [];
-  const sourceGrid = sourceOptions.filter((src) => src.name !== 'all').slice(0, 12);
+  const sourceGrid = useMemo(
+    () =>
+      sourceOptions
+        .filter((src) => src.name !== 'all')
+        .sort((a, b) => {
+          const aFav = favoriteSourceSet.has(a.name) ? 1 : 0;
+          const bFav = favoriteSourceSet.has(b.name) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return a.name.localeCompare(b.name);
+        })
+        .slice(0, 12),
+    [favoriteSourceSet, sourceOptions]
+  );
 
   const suggestionsQuery = useQuery({
     queryKey: ['search-suggestions', preferredSearchSource, includeNsfwSources],
@@ -321,23 +346,39 @@ export function SearchScreen({ navigation }: any) {
             <Text style={[styles.sheetSectionTitle, { color: theme.colors.textMuted }]}>Select source</Text>
             <ScrollView style={styles.sourceMenuScroll} nestedScrollEnabled>
               {sourceOptions.map((src) => (
-                <TouchableOpacity
+                <View
                   key={src.name}
-                  style={styles.sourceMenuItem}
-                  onPress={() => {
-                    setPreferredSearchSource(src.name);
-                    setShowSourceMenu(false);
-                  }}
+                  style={styles.sourceMenuItemRow}
                 >
-                  <Text
-                    style={[
-                      styles.sourceMenuItemText,
-                      { color: preferredSearchSource === src.name ? theme.colors.primary : theme.colors.text },
-                    ]}
+                  <TouchableOpacity
+                    style={styles.sourceMenuItemMain}
+                    onPress={() => {
+                      setPreferredSearchSource(src.name);
+                      setShowSourceMenu(false);
+                    }}
                   >
-                    {src.name === 'all' ? 'All sources' : src.name}
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={[
+                        styles.sourceMenuItemText,
+                        { color: preferredSearchSource === src.name ? theme.colors.primary : theme.colors.text },
+                      ]}
+                    >
+                      {src.name === 'all' ? 'All sources' : src.name}
+                    </Text>
+                  </TouchableOpacity>
+                  {src.name !== 'all' && (
+                    <TouchableOpacity
+                      style={styles.sourceMenuStarBtn}
+                      onPress={() => toggleFavoriteSource(src.name)}
+                    >
+                      <MaterialCommunityIcons
+                        name={favoriteSourceSet.has(src.name) ? 'star' : 'star-outline'}
+                        size={18}
+                        color={favoriteSourceSet.has(src.name) ? theme.colors.primary : theme.colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
               ))}
             </ScrollView>
           </Pressable>
@@ -493,7 +534,13 @@ export function SearchScreen({ navigation }: any) {
 
           <View style={[styles.sectionHeaderRow, { marginTop: 16 }]}>
             <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Manga sources</Text>
-            <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Manage</Text>
+            {favoriteSources.length > 0 ? (
+              <TouchableOpacity onPress={clearFavoriteSources}>
+                <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Clear Pins</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Long press to pin</Text>
+            )}
           </View>
           <View style={styles.sourceGrid}>
             {sourceGrid.map((src) => (
@@ -504,11 +551,17 @@ export function SearchScreen({ navigation }: any) {
                   setPreferredSearchSource(src.name);
                   navigation.navigate('ExtensionSource', { sourceName: src.name });
                 }}
+                onLongPress={() => toggleFavoriteSource(src.name)}
               >
                 <SourceIcon name={src.name} iconUrl={src.iconUrl} size={52} />
                 <Text style={[styles.sourceGridText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                   {src.name}
                 </Text>
+                <MaterialCommunityIcons
+                  name={favoriteSourceSet.has(src.name) ? 'star' : 'star-outline'}
+                  size={13}
+                  color={favoriteSourceSet.has(src.name) ? theme.colors.primary : theme.colors.textMuted}
+                />
               </TouchableOpacity>
             ))}
           </View>
@@ -1129,6 +1182,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionMore: { fontSize: 13, fontWeight: '700' },
+  libraryHeaderRow: {
+    marginTop: 2,
+    marginBottom: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  libraryHeaderBtn: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  libraryHeaderBtnText: { fontSize: 12, fontWeight: '700' },
 
   groupedSearchWrap: { paddingHorizontal: 16, paddingBottom: 24, gap: 10 },
   groupSection: {
@@ -1199,7 +1266,9 @@ const styles = StyleSheet.create({
   sheetActionText: { fontSize: 14, fontWeight: '600' },
   sheetSectionTitle: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 4, fontWeight: '700' },
   sourceMenuScroll: { maxHeight: 220 },
-  sourceMenuItem: { paddingHorizontal: 16, paddingVertical: 12 },
+  sourceMenuItemRow: { flexDirection: 'row', alignItems: 'center', paddingRight: 8 },
+  sourceMenuItemMain: { flex: 1, paddingHorizontal: 16, paddingVertical: 12 },
+  sourceMenuStarBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   sourceMenuItemText: { fontSize: 14, fontWeight: '600' },
 
   extensionSummaryRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 6 },
