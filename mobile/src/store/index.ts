@@ -261,6 +261,9 @@ interface SettingsState {
   recentSearches: string[];
   addRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
+  favoriteSources: string[];
+  toggleFavoriteSource: (source: string) => void;
+  clearFavoriteSources: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -294,11 +297,24 @@ export const useSettingsStore = create<SettingsState>()(
           };
         }),
       clearRecentSearches: () => set({ recentSearches: [] }),
+      favoriteSources: [],
+      toggleFavoriteSource: (source) =>
+        set((state) => {
+          const normalized = source.trim();
+          if (!normalized || normalized.toLowerCase() === 'all') return state;
+          const exists = state.favoriteSources.includes(normalized);
+          return {
+            favoriteSources: exists
+              ? state.favoriteSources.filter((item) => item !== normalized)
+              : [normalized, ...state.favoriteSources].slice(0, 24),
+          };
+        }),
+      clearFavoriteSources: () => set({ favoriteSources: [] }),
     }),
     {
       name: 'settings',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: any) => {
         const state = persistedState?.state ?? persistedState;
 
@@ -344,6 +360,13 @@ export const useSettingsStore = create<SettingsState>()(
                   .map((item: string) => item.trim())
                   .filter((item: string) => item.length > 0)
                   .slice(0, 12)
+              : [],
+            favoriteSources: Array.isArray(state?.favoriteSources)
+              ? state.favoriteSources
+                  .filter((item: unknown) => typeof item === 'string')
+                  .map((item: string) => item.trim())
+                  .filter((item: string) => item.length > 0 && item.toLowerCase() !== 'all')
+                  .slice(0, 24)
               : [],
           },
         };

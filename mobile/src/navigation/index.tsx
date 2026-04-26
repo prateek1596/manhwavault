@@ -9,7 +9,7 @@ import {
   LibraryScreen, SearchScreen, UpdatesScreen,
   ExtensionsScreen, SettingsScreen,
 } from '../screens/TabScreens';
-import { ManhwaDetailScreen, InstallExtensionScreen, ExtensionSourceScreen } from '../screens/StackScreens';
+import { ManhwaDetailScreen, InstallExtensionScreen, ExtensionSourceScreen, DownloadsScreen } from '../screens/StackScreens';
 import { ReaderScreen } from '../screens/ReaderScreen';
 import { RootTabParamList, RootStackParamList } from '../types';
 
@@ -104,6 +104,11 @@ export function AppNavigator() {
           name="ExtensionSource"
           component={ExtensionSourceScreen}
           options={{ title: 'Browse Source' }}
+        />
+        <Stack.Screen
+          name="Downloads"
+          component={DownloadsScreen}
+          options={{ title: 'Downloads' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

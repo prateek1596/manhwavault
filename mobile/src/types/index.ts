@@ -95,4 +95,5 @@ export type RootStackParamList = {
   Reader: { manhwa: Manhwa; chapter: Chapter; chapterList: Chapter[] };
   InstallExtension: undefined;
   ExtensionSource: { sourceName: string; initialQuery?: string };
+  Downloads: undefined;
 };
