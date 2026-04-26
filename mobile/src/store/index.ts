@@ -37,6 +37,8 @@ interface LibraryState {
   toggleNotifications: (manhwaId: string) => void;
   toggleBookmark: (manhwaId: string) => void;
   toggleDownloaded: (manhwaId: string) => void;
+  clearDownloadedMarks: () => void;
+  clearBookmarkMarks: () => void;
   getEntry: (manhwaId: string) => LibraryEntry | undefined;
 }
 
@@ -167,6 +169,30 @@ export const useLibraryStore = create<LibraryState>()(
           };
         }),
 
+      clearDownloadedMarks: () =>
+        set((state) => {
+          const nextEntries: Record<string, LibraryEntry> = {};
+          for (const [manhwaId, entry] of Object.entries(state.entries)) {
+            nextEntries[manhwaId] = {
+              ...entry,
+              downloaded: false,
+            };
+          }
+          return { entries: nextEntries };
+        }),
+
+      clearBookmarkMarks: () =>
+        set((state) => {
+          const nextEntries: Record<string, LibraryEntry> = {};
+          for (const [manhwaId, entry] of Object.entries(state.entries)) {
+            nextEntries[manhwaId] = {
+              ...entry,
+              bookmarked: false,
+            };
+          }
+          return { entries: nextEntries };
+        }),
+
       getEntry: (manhwaId) => get().entries[manhwaId],
     }),
     {
@@ -232,6 +258,9 @@ interface SettingsState {
   setPreferredSearchSource: (source: string) => void;
   searchResultLimit: number;
   setSearchResultLimit: (limit: number) => void;
+  recentSearches: string[];
+  addRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -254,6 +283,17 @@ export const useSettingsStore = create<SettingsState>()(
       searchResultLimit: 60,
       setSearchResultLimit: (limit) =>
         set({ searchResultLimit: Math.max(10, Math.min(200, Math.round(limit))) }),
+      recentSearches: [],
+      addRecentSearch: (query) =>
+        set((state) => {
+          const normalized = query.trim();
+          if (!normalized) return state;
+          const deduped = state.recentSearches.filter((item) => item.toLowerCase() !== normalized.toLowerCase());
+          return {
+            recentSearches: [normalized, ...deduped].slice(0, 12),
+          };
+        }),
+      clearRecentSearches: () => set({ recentSearches: [] }),
     }),
     {
       name: 'settings',
@@ -298,6 +338,13 @@ export const useSettingsStore = create<SettingsState>()(
                 ? state.preferredSearchSource
                 : 'all',
             searchResultLimit: Math.max(10, Math.min(200, toNumber(state?.searchResultLimit, 60))),
+            recentSearches: Array.isArray(state?.recentSearches)
+              ? state.recentSearches
+                  .filter((item: unknown) => typeof item === 'string')
+                  .map((item: string) => item.trim())
+                  .filter((item: string) => item.length > 0)
+                  .slice(0, 12)
+              : [],
           },
         };
       },
