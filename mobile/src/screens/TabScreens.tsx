@@ -1087,13 +1087,13 @@ export function SettingsScreen() {
           {favoriteSources.length > 1 && (
             <>
               <Text style={[styles.settingSub, { color: theme.colors.textMuted, paddingHorizontal: 16, paddingBottom: 8 }]}>Long press and drag pinned sources to reorder.</Text>
-              <DraggableFlatList
+              <DraggableFlatList<string>
                 data={favoriteSources}
                 keyExtractor={(item) => item}
                 scrollEnabled={false}
-                onDragEnd={({ from, to }) => moveFavoriteSource(from, to)}
+                onDragEnd={({ from, to }: { from: number; to: number }) => moveFavoriteSource(from, to)}
                 contentContainerStyle={styles.pinnedListWrap}
-                renderItem={({ item, drag, isActive }) => (
+                renderItem={({ item, drag, isActive }: { item: string; drag: () => void; isActive: boolean }) => (
                   <Pressable
                     onLongPress={drag}
                     delayLongPress={120}
