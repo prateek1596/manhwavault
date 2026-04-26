@@ -157,7 +157,6 @@ export function SearchScreen({ navigation }: any) {
   const REFRESH_COOLDOWN_MS = 1500;
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
-  const [recentQueries, setRecentQueries] = useState<string[]>([]);
   const [showSourceMenu, setShowSourceMenu] = useState(false);
   const [nextSuggestionRefreshAt, setNextSuggestionRefreshAt] = useState(0);
   const { width } = useWindowDimensions();
@@ -170,6 +169,9 @@ export function SearchScreen({ navigation }: any) {
     preferredSearchSource,
     setPreferredSearchSource,
     searchResultLimit,
+    recentSearches,
+    addRecentSearch,
+    clearRecentSearches,
   } = useSettingsStore();
 
   const sourcesQuery = useQuery({
@@ -255,10 +257,7 @@ export function SearchScreen({ navigation }: any) {
     const next = query.trim();
     if (!next) return;
     setSubmitted(next);
-    setRecentQueries((prev) => {
-      const deduped = prev.filter((item) => item.toLowerCase() !== next.toLowerCase());
-      return [next, ...deduped].slice(0, 6);
-    });
+    addRecentSearch(next);
   };
 
   return (
@@ -469,13 +468,16 @@ export function SearchScreen({ navigation }: any) {
             />
           )}
 
-          {recentQueries.length > 0 && (
+          {recentSearches.length > 0 && (
             <>
               <View style={[styles.sectionHeaderRow, { marginTop: 12 }]}>
                 <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Recent searches</Text>
+                <TouchableOpacity onPress={clearRecentSearches}>
+                  <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Clear</Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.limitChipWrap}>
-                {recentQueries.map((value) => (
+                {recentSearches.slice(0, 8).map((value) => (
                   <Chip
                     key={value}
                     label={value}
@@ -776,8 +778,16 @@ export function SettingsScreen() {
     setIncludeNsfwSources,
     searchResultLimit,
     setSearchResultLimit,
+    recentSearches,
+    clearRecentSearches,
   } = useSettingsStore();
+  const libraryEntries = useLibraryStore((s) => Object.values(s.entries));
+  const clearDownloadedMarks = useLibraryStore((s) => s.clearDownloadedMarks);
+  const clearBookmarkMarks = useLibraryStore((s) => s.clearBookmarkMarks);
   const [backendInput, setBackendInput] = useState(backendUrl);
+
+  const downloadedCount = libraryEntries.filter((entry) => entry.downloaded).length;
+  const bookmarkCount = libraryEntries.filter((entry) => entry.bookmarked).length;
 
   const telemetryQuery = useQuery({
     queryKey: ['telemetry-suggestions'],
@@ -954,6 +964,37 @@ export function SettingsScreen() {
               {imageQuality === q && <Text style={{ color: theme.colors.primary }}>✓</Text>}
             </TouchableOpacity>
           ))}
+        </View>
+
+        <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Library Maintenance</Text>
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={row}>
+            <View>
+              <Text style={label}>Bookmarked titles</Text>
+              <Text style={sub}>{bookmarkCount} currently marked</Text>
+            </View>
+            <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={clearBookmarkMarks}>
+              <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={row}>
+            <View>
+              <Text style={label}>Downloaded markers</Text>
+              <Text style={sub}>{downloadedCount} currently marked</Text>
+            </View>
+            <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={clearDownloadedMarks}>
+              <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={row}>
+            <View>
+              <Text style={label}>Recent search history</Text>
+              <Text style={sub}>{recentSearches.length} saved queries</Text>
+            </View>
+            <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={clearRecentSearches}>
+              <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>Clear</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Telemetry (Debug)</Text>
