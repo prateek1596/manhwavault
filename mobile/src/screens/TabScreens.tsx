@@ -833,6 +833,9 @@ export function SettingsScreen() {
     setSearchResultLimit,
     recentSearches,
     clearRecentSearches,
+    favoriteSources,
+    toggleFavoriteSource,
+    clearFavoriteSources,
   } = useSettingsStore();
   const libraryEntries = useLibraryStore((s) => Object.values(s.entries));
   const clearDownloadedMarks = useLibraryStore((s) => s.clearDownloadedMarks);
@@ -878,6 +881,25 @@ export function SettingsScreen() {
     .slice(0, 5);
 
   const telemetryRecent = (telemetryQuery.data?.recent ?? []).slice(0, 6);
+
+  const sourcesQuery = useQuery({
+    queryKey: ['sources', includeNsfwSources],
+    queryFn: () => api.listSources(includeNsfwSources),
+  });
+
+  const favoriteSourceSet = useMemo(() => new Set(favoriteSources), [favoriteSources]);
+  const availableSources = useMemo(
+    () =>
+      (sourcesQuery.data ?? [])
+        .filter((source) => source.name !== 'all')
+        .sort((a, b) => {
+          const aFav = favoriteSourceSet.has(a.name) ? 1 : 0;
+          const bFav = favoriteSourceSet.has(b.name) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return a.name.localeCompare(b.name);
+        }),
+    [favoriteSourceSet, sourcesQuery.data]
+  );
 
   useEffect(() => {
     setBackendInput(backendUrl);
@@ -1017,6 +1039,36 @@ export function SettingsScreen() {
               {imageQuality === q && <Text style={{ color: theme.colors.primary }}>✓</Text>}
             </TouchableOpacity>
           ))}
+        </View>
+
+        <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Source Personalization</Text>
+        <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={row}>
+            <View>
+              <Text style={label}>Pinned sources</Text>
+              <Text style={sub}>{favoriteSources.length} pinned source{favoriteSources.length === 1 ? '' : 's'}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]}
+              onPress={clearFavoriteSources}
+              disabled={favoriteSources.length === 0}
+            >
+              <Text style={[styles.backendUrlGhostText, { color: favoriteSources.length === 0 ? theme.colors.textMuted : theme.colors.textSecondary }]}>Clear pins</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.limitChipWrap}>
+            {availableSources.slice(0, 18).map((source) => (
+              <Chip
+                key={source.name}
+                label={favoriteSourceSet.has(source.name) ? `★ ${source.name}` : source.name}
+                active={favoriteSourceSet.has(source.name)}
+                onPress={() => toggleFavoriteSource(source.name)}
+              />
+            ))}
+            {availableSources.length === 0 && !sourcesQuery.isFetching && (
+              <Text style={[styles.settingSub, { color: theme.colors.textMuted, paddingHorizontal: 16 }]}>No sources available yet.</Text>
+            )}
+          </View>
         </View>
 
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Library Maintenance</Text>
