@@ -264,6 +264,22 @@ interface SettingsState {
   favoriteSources: string[];
   toggleFavoriteSource: (source: string) => void;
   clearFavoriteSources: () => void;
+  moveFavoriteSource: (fromIndex: number, toIndex: number) => void;
+}
+
+function normalizeFavoriteSources(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const source = item.trim();
+    if (!source || source.toLowerCase() === 'all' || seen.has(source)) continue;
+    seen.add(source);
+    normalized.push(source);
+    if (normalized.length >= 24) break;
+  }
+  return normalized;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -310,6 +326,21 @@ export const useSettingsStore = create<SettingsState>()(
           };
         }),
       clearFavoriteSources: () => set({ favoriteSources: [] }),
+      moveFavoriteSource: (fromIndex, toIndex) =>
+        set((state) => {
+          const maxIndex = state.favoriteSources.length - 1;
+          if (maxIndex < 1) return state;
+
+          const from = Math.max(0, Math.min(maxIndex, Math.round(fromIndex)));
+          const to = Math.max(0, Math.min(maxIndex, Math.round(toIndex)));
+          if (from === to) return state;
+
+          const next = [...state.favoriteSources];
+          const [moved] = next.splice(from, 1);
+          if (!moved) return state;
+          next.splice(to, 0, moved);
+          return { favoriteSources: next };
+        }),
     }),
     {
       name: 'settings',
@@ -361,13 +392,7 @@ export const useSettingsStore = create<SettingsState>()(
                   .filter((item: string) => item.length > 0)
                   .slice(0, 12)
               : [],
-            favoriteSources: Array.isArray(state?.favoriteSources)
-              ? state.favoriteSources
-                  .filter((item: unknown) => typeof item === 'string')
-                  .map((item: string) => item.trim())
-                  .filter((item: string) => item.length > 0 && item.toLowerCase() !== 'all')
-                  .slice(0, 24)
-              : [],
+            favoriteSources: normalizeFavoriteSources(state?.favoriteSources),
           },
         };
       },
