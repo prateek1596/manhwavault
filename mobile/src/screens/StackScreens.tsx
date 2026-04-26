@@ -389,6 +389,86 @@ export function ExtensionSourceScreen({ route, navigation }: any) {
   );
 }
 
+export function DownloadsScreen({ navigation }: any) {
+  const theme = useAppTheme();
+  const entries = useLibraryStore((s) => s.entries);
+  const toggleDownloaded = useLibraryStore((s) => s.toggleDownloaded);
+  const clearDownloadedMarks = useLibraryStore((s) => s.clearDownloadedMarks);
+
+  const downloadedEntries = useMemo(
+    () =>
+      Object.values(entries)
+        .filter((entry) => entry.downloaded)
+        .sort((a, b) => {
+          const aTime = new Date(a.lastOpenedAt || a.lastReadAt || a.followedAt || 0).getTime();
+          const bTime = new Date(b.lastOpenedAt || b.lastReadAt || b.followedAt || 0).getTime();
+          return bTime - aTime;
+        }),
+    [entries]
+  );
+
+  if (downloadedEntries.length === 0) {
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
+        <EmptyState
+          icon="⬇️"
+          title="No downloaded titles"
+          subtitle="Mark a series as downloaded from its detail page."
+          action={{ label: 'Browse', onPress: () => navigation.navigate('Tabs') }}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}> 
+      <View style={styles.downloadsHeader}>
+        <Text style={[styles.downloadsCount, { color: theme.colors.textSecondary }]}>Saved locally: {downloadedEntries.length}</Text>
+        <TouchableOpacity
+          style={[styles.downloadsClearBtn, { borderColor: theme.colors.border }]}
+          onPress={clearDownloadedMarks}
+        >
+          <Text style={[styles.downloadsClearText, { color: theme.colors.textSecondary }]}>Clear all</Text>
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={downloadedEntries}
+        keyExtractor={(item) => item.manhwa.id}
+        contentContainerStyle={styles.downloadsList}
+        renderItem={({ item }) => (
+          <View style={[styles.downloadCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
+            <TouchableOpacity onPress={() => navigation.navigate('ManhwaDetail', { manhwa: item.manhwa })}>
+              <View style={styles.downloadCardRow}>
+                <Image source={{ uri: item.manhwa.cover }} style={styles.downloadCover} resizeMode="cover" />
+                <View style={styles.downloadMeta}>
+                  <Text style={[styles.downloadTitle, { color: theme.colors.text }]} numberOfLines={2}>{item.manhwa.title}</Text>
+                  <Text style={[styles.downloadSub, { color: theme.colors.textMuted }]} numberOfLines={1}>{item.manhwa.source}</Text>
+                  <Text style={[styles.downloadSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>{item.manhwa.latestChapter || 'Latest chapter unknown'}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+            <View style={styles.downloadActionsRow}>
+              <TouchableOpacity
+                style={[styles.downloadActionBtn, { borderColor: theme.colors.border }]}
+                onPress={() => navigation.navigate('Reader', { manhwa: item.manhwa, chapter: { id: 'resume', title: 'Continue reading', url: item.manhwa.url, number: item.lastReadChapter ?? 0 }, chapterList: [] })}
+              >
+                <Text style={[styles.downloadActionText, { color: theme.colors.textSecondary }]}>Open</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.downloadActionBtn, { borderColor: theme.colors.border }]}
+                onPress={() => toggleDownloaded(item.manhwa.id)}
+              >
+                <Text style={[styles.downloadActionText, { color: theme.colors.danger }]}>Remove mark</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   hero: { height: 220, position: 'relative', marginBottom: 8 },
@@ -427,4 +507,18 @@ const styles = StyleSheet.create({
   sourceGridRow: { justifyContent: 'space-between', paddingHorizontal: 4 },
   catalogActions: { flexDirection: 'row', gap: 10 },
   catalogActionBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  downloadsHeader: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  downloadsCount: { fontSize: 13, fontWeight: '700' },
+  downloadsClearBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  downloadsClearText: { fontSize: 12, fontWeight: '700' },
+  downloadsList: { paddingHorizontal: 16, paddingBottom: 26, gap: 12 },
+  downloadCard: { borderWidth: 1, borderRadius: 16, padding: 10, gap: 10 },
+  downloadCardRow: { flexDirection: 'row', gap: 12 },
+  downloadCover: { width: 74, height: 108, borderRadius: 10 },
+  downloadMeta: { flex: 1, justifyContent: 'center', gap: 4 },
+  downloadTitle: { fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  downloadSub: { fontSize: 12 },
+  downloadActionsRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
+  downloadActionBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  downloadActionText: { fontSize: 12, fontWeight: '700' },
 });
