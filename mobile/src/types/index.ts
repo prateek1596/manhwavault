@@ -70,9 +70,14 @@ export interface LibraryEntry {
   followedAt: string;
   lastReadChapter?: number;
   lastReadAt?: string;
+  lastOpenedAt?: string;
   unreadCount?: number;
   notificationsEnabled: boolean;
+  bookmarked?: boolean;
+  downloaded?: boolean;
 }
+
+export type LibraryFilter = 'all' | 'bookmarked' | 'downloaded' | 'history' | 'in-progress' | 'completed';
 
 export type ReadingMode = 'vertical' | 'horizontal';
 

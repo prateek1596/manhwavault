@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Manhwa, Chapter, LibraryEntry, ReadingMode } from '../types';
+import { Manhwa, Chapter, LibraryEntry, LibraryFilter, ReadingMode } from '../types';
 
 function toBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value;
@@ -26,12 +26,17 @@ function toNumber(value: unknown, fallback: number): number {
 
 interface LibraryState {
   entries: Record<string, LibraryEntry>;
+  libraryFilter: LibraryFilter;
+  setLibraryFilter: (filter: LibraryFilter) => void;
   follow: (manhwa: Manhwa) => void;
   unfollow: (manhwaId: string) => void;
   isFollowing: (manhwaId: string) => boolean;
   markChapterRead: (manhwaId: string, chapterNumber: number) => void;
+  markViewed: (manhwaId: string) => void;
   setLastRead: (manhwaId: string, chapter: Chapter) => void;
   toggleNotifications: (manhwaId: string) => void;
+  toggleBookmark: (manhwaId: string) => void;
+  toggleDownloaded: (manhwaId: string) => void;
   getEntry: (manhwaId: string) => LibraryEntry | undefined;
 }
 
@@ -39,6 +44,9 @@ export const useLibraryStore = create<LibraryState>()(
   persist(
     (set, get) => ({
       entries: {},
+      libraryFilter: 'all',
+
+      setLibraryFilter: (filter) => set({ libraryFilter: filter }),
 
       follow: (manhwa) =>
         set((state) => ({
@@ -48,6 +56,8 @@ export const useLibraryStore = create<LibraryState>()(
               manhwa,
               followedAt: new Date().toISOString(),
               notificationsEnabled: true,
+                bookmarked: false,
+                downloaded: false,
             },
           },
         })),
@@ -73,6 +83,22 @@ export const useLibraryStore = create<LibraryState>()(
                   chapterNumber,
                   entry.lastReadChapter ?? 0
                 ),
+                lastOpenedAt: new Date().toISOString(),
+              },
+            },
+          };
+        }),
+
+      markViewed: (manhwaId) =>
+        set((state) => {
+          const entry = state.entries[manhwaId];
+          if (!entry) return state;
+          return {
+            entries: {
+              ...state.entries,
+              [manhwaId]: {
+                ...entry,
+                lastOpenedAt: new Date().toISOString(),
               },
             },
           };
@@ -89,6 +115,7 @@ export const useLibraryStore = create<LibraryState>()(
                 ...entry,
                 lastReadChapter: chapter.number,
                 lastReadAt: new Date().toISOString(),
+                lastOpenedAt: new Date().toISOString(),
               },
             },
           };
@@ -109,12 +136,43 @@ export const useLibraryStore = create<LibraryState>()(
           };
         }),
 
+      toggleBookmark: (manhwaId) =>
+        set((state) => {
+          const entry = state.entries[manhwaId];
+          if (!entry) return state;
+          return {
+            entries: {
+              ...state.entries,
+              [manhwaId]: {
+                ...entry,
+                bookmarked: !entry.bookmarked,
+                lastOpenedAt: new Date().toISOString(),
+              },
+            },
+          };
+        }),
+
+      toggleDownloaded: (manhwaId) =>
+        set((state) => {
+          const entry = state.entries[manhwaId];
+          if (!entry) return state;
+          return {
+            entries: {
+              ...state.entries,
+              [manhwaId]: {
+                ...entry,
+                downloaded: !entry.downloaded,
+              },
+            },
+          };
+        }),
+
       getEntry: (manhwaId) => get().entries[manhwaId],
     }),
     {
       name: 'library',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
       migrate: (persistedState: any) => {
         const state = persistedState?.state ?? persistedState;
         const rawEntries = state?.entries ?? {};
@@ -124,6 +182,8 @@ export const useLibraryStore = create<LibraryState>()(
           entries[key] = {
             ...entry,
             notificationsEnabled: toBoolean(entry?.notificationsEnabled, true),
+            bookmarked: toBoolean(entry?.bookmarked, false),
+            downloaded: toBoolean(entry?.downloaded, false),
             lastReadChapter:
               entry?.lastReadChapter === undefined
                 ? undefined
@@ -131,11 +191,21 @@ export const useLibraryStore = create<LibraryState>()(
           };
         }
 
+        const libraryFilter: LibraryFilter =
+          state?.libraryFilter === 'bookmarked' ||
+          state?.libraryFilter === 'downloaded' ||
+          state?.libraryFilter === 'history' ||
+          state?.libraryFilter === 'in-progress' ||
+          state?.libraryFilter === 'completed'
+            ? state.libraryFilter
+            : 'all';
+
         return {
           ...persistedState,
           state: {
             ...state,
             entries,
+            libraryFilter,
           },
         };
       },

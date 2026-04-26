@@ -15,9 +15,13 @@ import { Chapter, Manhwa } from '../types';
 export function ManhwaDetailScreen({ route, navigation }: any) {
   const theme = useAppTheme();
   const { manhwa }: { manhwa: Manhwa } = route.params;
-  const { follow, unfollow, isFollowing, getEntry, toggleNotifications } = useLibraryStore();
+  const { follow, unfollow, isFollowing, getEntry, toggleNotifications, toggleBookmark, toggleDownloaded, markViewed } = useLibraryStore();
   const following = isFollowing(manhwa.id);
   const entry = getEntry(manhwa.id);
+
+  useEffect(() => {
+    markViewed(manhwa.id);
+  }, [markViewed, manhwa.id]);
 
   const { data: chapters, isLoading } = useQuery({
     queryKey: ['chapters', manhwa.url],
@@ -91,6 +95,36 @@ export function ManhwaDetailScreen({ route, navigation }: any) {
               </Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            style={[
+              styles.actionBtn,
+              {
+                backgroundColor: entry?.bookmarked ? theme.colors.primaryLight : theme.colors.surface,
+                borderWidth: 0.5,
+                borderColor: entry?.bookmarked ? theme.colors.primary : theme.colors.border,
+              },
+            ]}
+            onPress={() => toggleBookmark(manhwa.id)}
+          >
+            <Text style={[styles.actionBtnText, { color: entry?.bookmarked ? theme.colors.primary : theme.colors.text }]}>
+              {entry?.bookmarked ? '★ Bookmarked' : '☆ Bookmark'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.actionBtn,
+              {
+                backgroundColor: entry?.downloaded ? theme.colors.primaryLight : theme.colors.surface,
+                borderWidth: 0.5,
+                borderColor: entry?.downloaded ? theme.colors.primary : theme.colors.border,
+              },
+            ]}
+            onPress={() => toggleDownloaded(manhwa.id)}
+          >
+            <Text style={[styles.actionBtnText, { color: entry?.downloaded ? theme.colors.primary : theme.colors.text }]}>
+              {entry?.downloaded ? '⬇ Downloaded' : '⬇ Mark Downloaded'}
+            </Text>
+          </TouchableOpacity>
           {following && entry?.lastReadChapter !== undefined && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: theme.colors.surface, borderWidth: 0.5, borderColor: theme.colors.border }]}

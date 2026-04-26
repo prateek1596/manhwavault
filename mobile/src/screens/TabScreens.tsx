@@ -30,18 +30,56 @@ function parseChapterFromText(value?: string | number): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getManhwaLatestChapterNumber(latestChapter?: string): number | null {
+  return parseChapterFromText(latestChapter);
+}
+
+function getLibraryActivityTime(entry: any): number {
+  return new Date(entry.lastOpenedAt || entry.lastReadAt || entry.followedAt || 0).getTime();
+}
+
+function isCompletedEntry(entry: any): boolean {
+  const latest = getManhwaLatestChapterNumber(entry?.manhwa?.latestChapter);
+  if (!latest || entry?.lastReadChapter === undefined) return false;
+  return entry.lastReadChapter >= latest;
+}
+
+function isInProgressEntry(entry: any): boolean {
+  const latest = getManhwaLatestChapterNumber(entry?.manhwa?.latestChapter);
+  if (!latest || entry?.lastReadChapter === undefined) return false;
+  return entry.lastReadChapter > 0 && entry.lastReadChapter < latest;
+}
+
 // ── Library ───────────────────────────────────────────────────────────────────
 
 export function LibraryScreen({ navigation }: any) {
   const theme = useAppTheme();
   const entries = useLibraryStore((s) => s.entries);
+  const libraryFilter = useLibraryStore((s) => s.libraryFilter);
+  const setLibraryFilter = useLibraryStore((s) => s.setLibraryFilter);
   const { width } = useWindowDimensions();
   const cardWidth = (width - 48) / 2;
-  const library = Object.values(entries).sort((a, b) => {
-    const aTime = new Date(a.lastReadAt || a.followedAt || 0).getTime();
-    const bTime = new Date(b.lastReadAt || b.followedAt || 0).getTime();
-    return bTime - aTime;
-  });
+  const library = useMemo(
+    () => Object.values(entries).sort((a, b) => getLibraryActivityTime(b) - getLibraryActivityTime(a)),
+    [entries]
+  );
+  const filteredLibrary = useMemo(() => {
+    switch (libraryFilter) {
+      case 'bookmarked':
+        return library.filter((entry) => entry.bookmarked);
+      case 'downloaded':
+        return library.filter((entry) => entry.downloaded);
+      case 'history':
+        return library.filter((entry) => entry.lastOpenedAt || entry.lastReadAt);
+      case 'in-progress':
+        return library.filter((entry) => isInProgressEntry(entry));
+      case 'completed':
+        return library.filter((entry) => isCompletedEntry(entry));
+      case 'all':
+      default:
+        return library;
+    }
+  }, [library, libraryFilter]);
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
@@ -56,36 +94,42 @@ export function LibraryScreen({ navigation }: any) {
         </TouchableOpacity>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.text }]}>On device</Text>
-          </View>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.text }]}>New chapters</Text>
-          </View>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.text }]}>Completed</Text>
-          </View>
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'bookmarked', label: 'Bookmarks' },
+            { key: 'downloaded', label: 'Downloads' },
+            { key: 'history', label: 'History' },
+            { key: 'in-progress', label: 'In progress' },
+            { key: 'completed', label: 'Completed' },
+          ].map((filter) => (
+            <Chip
+              key={filter.key}
+              label={filter.label}
+              active={libraryFilter === filter.key}
+              onPress={() => setLibraryFilter(filter.key as any)}
+            />
+          ))}
         </ScrollView>
 
         <Text style={[styles.sectionHead, { color: theme.colors.textSecondary }]}>Recent</Text>
       </View>
 
-      {library.length === 0 ? (
+      {filteredLibrary.length === 0 ? (
         <EmptyState
           icon="📚"
           title="Your library is empty"
-          subtitle="Search and follow series to build your history."
+          subtitle={libraryFilter === 'all' ? 'Search and follow series to build your history.' : 'No series match this filter yet.'}
           action={{ label: 'Browse', onPress: () => navigation.navigate('Search') }}
         />
       ) : (
         <FlatList
-          data={library}
+          data={filteredLibrary}
           numColumns={2}
           keyExtractor={(item) => item.manhwa.id}
           columnWrapperStyle={styles.row}
           contentContainerStyle={[styles.listContent, { paddingTop: 0 }]}
           renderItem={({ item }) => {
-            const latestChapter = parseChapterFromText(item.manhwa.latestChapter);
+            const latestChapter = getManhwaLatestChapterNumber(item.manhwa.latestChapter);
             const progressPercent =
               latestChapter && item.lastReadChapter !== undefined
                 ? Math.max(0, Math.min(100, (item.lastReadChapter / latestChapter) * 100))
@@ -118,6 +162,8 @@ export function SearchScreen({ navigation }: any) {
   const [nextSuggestionRefreshAt, setNextSuggestionRefreshAt] = useState(0);
   const { width } = useWindowDimensions();
   const cardWidth = (width - 48) / 2;
+  const libraryEntries = useLibraryStore((s) => s.entries);
+  const setLibraryFilter = useLibraryStore((s) => s.setLibraryFilter);
 
   const {
     includeNsfwSources,
@@ -184,6 +230,12 @@ export function SearchScreen({ navigation }: any) {
     staleTime: 1000 * 60 * 3,
   });
   const suggestions = suggestionsQuery.data ?? [];
+  const libraryManhwa = useMemo(() => Object.values(libraryEntries).map((entry) => entry.manhwa), [libraryEntries]);
+
+  const openLibraryWithFilter = (filter: 'all' | 'bookmarked' | 'downloaded' | 'history') => {
+    setLibraryFilter(filter);
+    navigation.navigate('Library');
+  };
 
   const handleSuggestionRefresh = () => {
     if (suggestionsQuery.isFetching || Date.now() < nextSuggestionRefreshAt) {
@@ -230,18 +282,18 @@ export function SearchScreen({ navigation }: any) {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Local storage</Text>
-          </View>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Bookmarks</Text>
-          </View>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Random</Text>
-          </View>
-          <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-            <Text style={[styles.filterPillText, { color: theme.colors.textSecondary }]}>Downloads</Text>
-          </View>
+          <Chip label="Local storage" onPress={() => openLibraryWithFilter('all')} />
+          <Chip label="Bookmarks" onPress={() => openLibraryWithFilter('bookmarked')} />
+          <Chip
+            label="Random"
+            onPress={() => {
+              const pool = suggestions.length > 0 ? suggestions : libraryManhwa;
+              if (pool.length === 0) return;
+              const picked = pool[Math.floor(Math.random() * pool.length)];
+              navigation.navigate('ManhwaDetail', { manhwa: picked });
+            }}
+          />
+          <Chip label="Downloads" onPress={() => openLibraryWithFilter('downloaded')} />
         </ScrollView>
       </View>
 
@@ -526,12 +578,14 @@ export function UpdatesScreen({ navigation }: any) {
             <MaterialCommunityIcons name="dots-vertical" size={21} color={theme.colors.textMuted} />
           </TouchableOpacity>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-            <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-              <Text style={[styles.filterPillText, { color: theme.colors.text }]}>Read later</Text>
-            </View>
-            <View style={[styles.filterPill, { borderColor: theme.colors.borderStrong }]}>
-              <Text style={[styles.filterPillText, { color: theme.colors.text }]}>Secret</Text>
-            </View>
+            <Chip
+              label="Read later"
+              onPress={() => {
+                useLibraryStore.getState().setLibraryFilter('bookmarked');
+                navigation.navigate('Library');
+              }}
+            />
+            <Chip label="Secret" onPress={() => navigation.navigate('Settings')} />
             <TouchableOpacity style={[styles.filterPillSolid, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
               <Text style={styles.filterPillSolidText}>Refresh</Text>
             </TouchableOpacity>
