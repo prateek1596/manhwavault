@@ -165,6 +165,7 @@ export function SearchScreen({ navigation }: any) {
   const REFRESH_COOLDOWN_MS = 1500;
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
   const [showSourceMenu, setShowSourceMenu] = useState(false);
   const [nextSuggestionRefreshAt, setNextSuggestionRefreshAt] = useState(0);
   const { width } = useWindowDimensions();
@@ -230,19 +231,21 @@ export function SearchScreen({ navigation }: any) {
   const searchError = isSearchingAll ? groupedSearchQuery.error : flatSearchQuery.error;
   const groupedResults = groupedSearchQuery.data ?? [];
   const flatResults = flatSearchQuery.data ?? [];
-  const sourceGrid = useMemo(
-    () =>
-      sourceOptions
-        .filter((src) => src.name !== 'all')
-        .sort((a, b) => {
-          const aFav = favoriteSourceSet.has(a.name) ? 1 : 0;
-          const bFav = favoriteSourceSet.has(b.name) ? 1 : 0;
-          if (aFav !== bFav) return bFav - aFav;
-          return a.name.localeCompare(b.name);
-        })
-        .slice(0, 12),
-    [favoriteSourceSet, sourceOptions]
-  );
+  const sourceGrid = useMemo(() => {
+    const nonAllSources = sourceOptions.filter((src) => src.name !== 'all');
+    const sourceByName = new Map(nonAllSources.map((source) => [source.name, source]));
+    const pinnedOrdered = favoriteSources
+      .map((name) => sourceByName.get(name))
+      .filter((source): source is SourceInfo => Boolean(source));
+    const pinnedSet = new Set(pinnedOrdered.map((source) => source.name));
+
+    const remaining = nonAllSources
+      .filter((source) => !pinnedSet.has(source.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const combined = showPinnedOnly ? pinnedOrdered : [...pinnedOrdered, ...remaining];
+    return combined.slice(0, 12);
+  }, [favoriteSources, showPinnedOnly, sourceOptions]);
 
   const suggestionsQuery = useQuery({
     queryKey: ['search-suggestions', preferredSearchSource, includeNsfwSources],
@@ -534,14 +537,24 @@ export function SearchScreen({ navigation }: any) {
 
           <View style={[styles.sectionHeaderRow, { marginTop: 16 }]}>
             <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Manga sources</Text>
-            {favoriteSources.length > 0 ? (
-              <TouchableOpacity onPress={clearFavoriteSources}>
-                <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Clear Pins</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Long press to pin</Text>
-            )}
+            <View style={styles.sectionHeaderActions}>
+              <Chip
+                label="Pinned only"
+                active={showPinnedOnly}
+                onPress={() => setShowPinnedOnly((prev) => !prev)}
+              />
+              {favoriteSources.length > 0 ? (
+                <TouchableOpacity onPress={clearFavoriteSources}>
+                  <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Clear Pins</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>Long press to pin</Text>
+              )}
+            </View>
           </View>
+          {showPinnedOnly && sourceGrid.length === 0 && (
+            <Text style={[styles.sourceGridEmptyText, { color: theme.colors.textMuted }]}>No pinned sources yet. Long press a source card to pin it.</Text>
+          )}
           <View style={styles.sourceGrid}>
             {sourceGrid.map((src) => (
               <TouchableOpacity
@@ -1233,6 +1246,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  sectionHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionMore: { fontSize: 13, fontWeight: '700' },
   libraryHeaderRow: {
     marginTop: 2,
@@ -1282,6 +1296,7 @@ const styles = StyleSheet.create({
   sourceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   sourceGridItem: { width: '22%', alignItems: 'center', gap: 7 },
   sourceGridText: { fontSize: 12, textAlign: 'center', width: '100%' },
+  sourceGridEmptyText: { fontSize: 12, paddingHorizontal: 16, marginBottom: 10 },
 
   feedWrap: { paddingBottom: 24 },
   topUpdatesBlock: { marginTop: 4 },
