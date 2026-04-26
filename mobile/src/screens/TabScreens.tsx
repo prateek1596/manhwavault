@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import DraggableFlatList from 'react-native-draggable-flatlist';
 import { useAppTheme } from '../theme';
 import { useLibraryStore, useSettingsStore } from '../store';
 import { ManhwaCard, LoadingSpinner, EmptyState, Chip, SourceIcon } from '../components';
@@ -849,6 +850,7 @@ export function SettingsScreen() {
     favoriteSources,
     toggleFavoriteSource,
     clearFavoriteSources,
+    moveFavoriteSource,
   } = useSettingsStore();
   const libraryEntries = useLibraryStore((s) => Object.values(s.entries));
   const clearDownloadedMarks = useLibraryStore((s) => s.clearDownloadedMarks);
@@ -1082,6 +1084,39 @@ export function SettingsScreen() {
               <Text style={[styles.settingSub, { color: theme.colors.textMuted, paddingHorizontal: 16 }]}>No sources available yet.</Text>
             )}
           </View>
+          {favoriteSources.length > 1 && (
+            <>
+              <Text style={[styles.settingSub, { color: theme.colors.textMuted, paddingHorizontal: 16, paddingBottom: 8 }]}>Long press and drag pinned sources to reorder.</Text>
+              <DraggableFlatList
+                data={favoriteSources}
+                keyExtractor={(item) => item}
+                scrollEnabled={false}
+                onDragEnd={({ from, to }) => moveFavoriteSource(from, to)}
+                contentContainerStyle={styles.pinnedListWrap}
+                renderItem={({ item, drag, isActive }) => (
+                  <Pressable
+                    onLongPress={drag}
+                    delayLongPress={120}
+                    style={[
+                      styles.pinnedListItem,
+                      {
+                        borderColor: theme.colors.border,
+                        backgroundColor: isActive ? theme.colors.surfaceVariant : theme.colors.background,
+                      },
+                    ]}
+                  >
+                    <View style={styles.pinnedListMain}>
+                      <MaterialCommunityIcons name="drag" size={18} color={theme.colors.textMuted} />
+                      <Text style={[styles.pinnedListText, { color: theme.colors.text }]} numberOfLines={1}>{item}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => toggleFavoriteSource(item)}>
+                      <MaterialCommunityIcons name="star-off-outline" size={18} color={theme.colors.textMuted} />
+                    </TouchableOpacity>
+                  </Pressable>
+                )}
+              />
+            </>
+          )}
         </View>
 
         <Text style={[styles.settingGroup, { color: theme.colors.textMuted }]}>Library Maintenance</Text>
@@ -1297,6 +1332,18 @@ const styles = StyleSheet.create({
   sourceGridItem: { width: '22%', alignItems: 'center', gap: 7 },
   sourceGridText: { fontSize: 12, textAlign: 'center', width: '100%' },
   sourceGridEmptyText: { fontSize: 12, paddingHorizontal: 16, marginBottom: 10 },
+  pinnedListWrap: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
+  pinnedListItem: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pinnedListMain: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 10 },
+  pinnedListText: { fontSize: 13, fontWeight: '600' },
 
   feedWrap: { paddingBottom: 24 },
   topUpdatesBlock: { marginTop: 4 },
