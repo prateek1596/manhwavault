@@ -304,6 +304,16 @@ export function SearchScreen({ navigation }: any) {
             returnKeyType="search"
             autoCorrect={false}
           />
+          {query.length > 0 && (
+            <TouchableOpacity
+              onPress={() => {
+                setQuery('');
+                setSubmitted('');
+              }}
+            >
+              <MaterialCommunityIcons name="close-circle" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => setShowSourceMenu(true)}>
             <MaterialCommunityIcons name="dots-vertical" size={21} color={theme.colors.textMuted} />
           </TouchableOpacity>
