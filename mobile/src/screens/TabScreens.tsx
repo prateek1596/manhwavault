@@ -667,7 +667,9 @@ export function UpdatesScreen({ navigation }: any) {
           <View style={styles.topUpdatesBlock}>
             <View style={styles.sectionHeaderRow}>
               <Text style={[styles.sectionHead, { color: theme.colors.text }]}>Updates</Text>
-              <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>More</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Library')}>
+                <Text style={[styles.sectionMore, { color: theme.colors.primary }]}>View all</Text>
+              </TouchableOpacity>
             </View>
             <FlatList
               horizontal
