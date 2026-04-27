@@ -654,7 +654,7 @@ export function UpdatesScreen({ navigation }: any) {
                 navigation.navigate('Library');
               }}
             />
-            <Chip label="Secret" onPress={() => navigation.navigate('Settings')} />
+            <Chip label="Settings" onPress={() => navigation.navigate('Settings')} />
             <TouchableOpacity style={[styles.filterPillSolid, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
               <Text style={styles.filterPillSolidText}>Refresh</Text>
             </TouchableOpacity>
