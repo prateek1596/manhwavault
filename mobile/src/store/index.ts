@@ -260,6 +260,7 @@ interface SettingsState {
   setSearchResultLimit: (limit: number) => void;
   recentSearches: string[];
   addRecentSearch: (query: string) => void;
+  removeRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
   favoriteSources: string[];
   toggleFavoriteSource: (source: string) => void;
@@ -312,6 +313,10 @@ export const useSettingsStore = create<SettingsState>()(
             recentSearches: [normalized, ...deduped].slice(0, 12),
           };
         }),
+      removeRecentSearch: (query) =>
+        set((state) => ({
+          recentSearches: state.recentSearches.filter((item) => item.toLowerCase() !== query.trim().toLowerCase()),
+        })),
       clearRecentSearches: () => set({ recentSearches: [] }),
       favoriteSources: [],
       toggleFavoriteSource: (source) =>

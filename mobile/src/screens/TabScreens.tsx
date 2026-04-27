@@ -181,6 +181,7 @@ export function SearchScreen({ navigation }: any) {
     searchResultLimit,
     recentSearches,
     addRecentSearch,
+    removeRecentSearch,
     clearRecentSearches,
     favoriteSources,
     toggleFavoriteSource,
@@ -533,14 +534,21 @@ export function SearchScreen({ navigation }: any) {
               </View>
               <View style={styles.limitChipWrap}>
                 {recentSearches.slice(0, 8).map((value) => (
-                  <Chip
-                    key={value}
-                    label={value}
-                    onPress={() => {
-                      setQuery(value);
-                      setSubmitted(value);
-                    }}
-                  />
+                  <View key={value} style={styles.recentSearchChipWrap}>
+                    <Chip
+                      label={value}
+                      onPress={() => {
+                        setQuery(value);
+                        setSubmitted(value);
+                      }}
+                    />
+                    <TouchableOpacity
+                      style={[styles.recentSearchRemoveBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
+                      onPress={() => removeRecentSearch(value)}
+                    >
+                      <MaterialCommunityIcons name="close" size={13} color={theme.colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             </>
@@ -1295,6 +1303,8 @@ const styles = StyleSheet.create({
   },
   sectionHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionMore: { fontSize: 13, fontWeight: '700' },
+  recentSearchChipWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  recentSearchRemoveBtn: { width: 22, height: 22, borderRadius: 11, borderWidth: 0.5, alignItems: 'center', justifyContent: 'center' },
   libraryHeaderRow: {
     marginTop: 2,
     marginBottom: 9,
