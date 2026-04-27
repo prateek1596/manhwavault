@@ -97,7 +97,7 @@ export function LibraryScreen({ navigation }: any) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           {[
             { key: 'all', label: 'All' },
-            { key: 'bookmarked', label: 'Bookmarks' },
+            { key: 'bookmarked', label: 'Read later' },
             { key: 'downloaded', label: 'Downloads' },
             { key: 'history', label: 'History' },
             { key: 'in-progress', label: 'In progress' },
@@ -311,7 +311,7 @@ export function SearchScreen({ navigation }: any) {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           <Chip label="Local storage" onPress={() => openLibraryWithFilter('all')} />
-          <Chip label="Bookmarks" onPress={() => openLibraryWithFilter('bookmarked')} />
+          <Chip label="Read later" onPress={() => openLibraryWithFilter('bookmarked')} />
           <Chip
             label="Random"
             onPress={() => {
@@ -1123,8 +1123,8 @@ export function SettingsScreen() {
         <View style={[styles.settingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={row}>
             <View>
-              <Text style={label}>Bookmarked titles</Text>
-              <Text style={sub}>{bookmarkCount} currently marked</Text>
+              <Text style={label}>Read later titles</Text>
+              <Text style={sub}>{bookmarkCount} currently saved</Text>
             </View>
             <TouchableOpacity style={[styles.backendUrlGhost, { borderColor: theme.colors.border }]} onPress={clearBookmarkMarks}>
               <Text style={[styles.backendUrlGhostText, { color: theme.colors.textSecondary }]}>Clear</Text>

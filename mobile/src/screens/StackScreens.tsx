@@ -107,7 +107,7 @@ export function ManhwaDetailScreen({ route, navigation }: any) {
             onPress={() => toggleBookmark(manhwa.id)}
           >
             <Text style={[styles.actionBtnText, { color: entry?.bookmarked ? theme.colors.primary : theme.colors.text }]}>
-              {entry?.bookmarked ? '★ Bookmarked' : '☆ Bookmark'}
+              {entry?.bookmarked ? '★ Saved for later' : '☆ Read later'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
