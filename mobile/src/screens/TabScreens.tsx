@@ -369,6 +369,9 @@ export function SearchScreen({ navigation }: any) {
                     style={styles.sourceMenuItemMain}
                     onPress={() => {
                       setPreferredSearchSource(src.name);
+                      if (query.trim()) {
+                        setSubmitted(query.trim());
+                      }
                       setShowSourceMenu(false);
                     }}
                   >
@@ -581,7 +584,7 @@ export function SearchScreen({ navigation }: any) {
                 style={styles.sourceGridItem}
                 onPress={() => {
                   setPreferredSearchSource(src.name);
-                  navigation.navigate('ExtensionSource', { sourceName: src.name });
+                  navigation.navigate('ExtensionSource', { sourceName: src.name, initialQuery: query.trim() || submitted.trim() || undefined });
                 }}
                 onLongPress={() => toggleFavoriteSource(src.name)}
               >
