@@ -358,6 +358,20 @@ export function SearchScreen({ navigation }: any) {
             >
               <Text style={[styles.sheetActionText, { color: theme.colors.text }]}>Open Settings</Text>
             </TouchableOpacity>
+            {preferredSearchSource !== 'all' && (
+              <TouchableOpacity
+                style={[styles.sheetActionBtn, { borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setPreferredSearchSource('all');
+                  if (query.trim()) {
+                    setSubmitted(query.trim());
+                  }
+                  setShowSourceMenu(false);
+                }}
+              >
+                <Text style={[styles.sheetActionText, { color: theme.colors.text }]}>Reset to all sources</Text>
+              </TouchableOpacity>
+            )}
             <Text style={[styles.sheetSectionTitle, { color: theme.colors.textMuted }]}>Select source</Text>
             <ScrollView style={styles.sourceMenuScroll} nestedScrollEnabled>
               {sourceOptions.map((src) => (
