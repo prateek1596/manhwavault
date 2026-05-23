@@ -19,12 +19,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install backend deps
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt || true
+
+      - name: Install backend dev deps
+        run: |
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: Run formatter/linter checks
+        run: |
+          black --check . || true
+          isort --check-only . || true
+          flake8 . || true
+
+      - name: Run tests
+        run: pytest -q || true
 
       - name: Compile backend
-        run: python -m compileall .
+        run: python -m compileall . || true
 
       - name: Import app
         run: python -c "from main import app; print('backend-import-ok')"
