@@ -115,7 +115,7 @@ class NameRequest(BaseModel):
     name: str
 
 
-@app.post("/extensions/install")
+@app.post("/extensions/install", dependencies=[Depends(require_api_key)])
 def install_extension(req: InstallRequest):
     try:
         name = manager.install(req.git_url)
@@ -127,7 +127,7 @@ def install_extension(req: InstallRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/extensions/update")
+@app.post("/extensions/update", dependencies=[Depends(require_api_key)])
 def update_extension(req: NameRequest):
     try:
         name = manager.update(req.name)
@@ -138,7 +138,7 @@ def update_extension(req: NameRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/extensions/remove")
+@app.post("/extensions/remove", dependencies=[Depends(require_api_key)])
 def remove_extension(req: NameRequest):
     try:
         name = manager.remove(req.name)
@@ -601,7 +601,7 @@ async def _fetch_html_catalog_from_source(scraper: BaseScraper, page: int, limit
     }
 
 
-@app.post("/jobs/schedule")
+@app.post("/jobs/schedule", dependencies=[Depends(require_api_key)])
 def schedule_job_endpoint(name: str, scraper: str, method: str = "search", interval_seconds: int = 300, *args):
     if name in scheduler.list_jobs():
         raise HTTPException(status_code=400, detail=f"Job '{name}' already exists")
@@ -637,7 +637,7 @@ def list_jobs_endpoint():
     return scheduler.list_jobs()
 
 
-@app.post("/jobs/remove")
+@app.post("/jobs/remove", dependencies=[Depends(require_api_key)])
 def remove_jobs_endpoint(name: str):
     ok = scheduler.remove_job(name)
     if not ok:
@@ -653,7 +653,7 @@ def remove_jobs_endpoint(name: str):
     return {"removed": name}
 
 
-@app.post("/jobs/run-now")
+@app.post("/jobs/run-now", dependencies=[Depends(require_api_key)])
 async def run_job_now(name: str):
     # run job once and return cached result
     j = scheduler.list_jobs().get(name)
@@ -664,7 +664,7 @@ async def run_job_now(name: str):
     return {"result_cached": val}
 
 
-@app.post("/extensions/test-run")
+@app.post("/extensions/test-run", dependencies=[Depends(require_api_key)])
 async def test_run_extension(name: str, method: str = "search", q: str = "test"):
     s = get_scraper(name)
     if not s:
@@ -677,9 +677,16 @@ async def test_run_extension(name: str, method: str = "search", q: str = "test")
             res = await asyncio.wait_for(fn(q), timeout=10)
         else:
             res = await asyncio.wait_for(fn(q), timeout=10)
+        METRIC_TEST_RUNS.inc()
         return {"ok": True, "result": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics")
+def metrics():
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 
 async def search_with_timeout(scraper: BaseScraper, query: str):
