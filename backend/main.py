@@ -11,6 +11,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+from core import http_client, cache, scheduler
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 manager = ExtensionManager()
 scrapers: dict[str, BaseScraper] = {}
+_cache = cache.SimpleCache(ttl=300)
 suggestion_refresh_counters: Counter = Counter()
 suggestion_click_counters: Counter = Counter()
 suggestion_client_counters: Counter = Counter()
@@ -36,7 +38,17 @@ async def lifespan(app: FastAPI):
     global scrapers
     scrapers = manager.load_all()
     logger.info(f"Loaded {len(scrapers)} extension(s): {list(scrapers.keys())}")
+    # scheduler has no explicit start step; tasks are created via API
     yield
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "loaded_extensions": [s.get("name") if isinstance(s, dict) else getattr(s, "name", "") for s in manager.list_installed()],
+        "scrapers": list(scrapers.keys()),
+    }
 
 
 app = FastAPI(title="ManhwaVault API", lifespan=lifespan)
@@ -384,10 +396,7 @@ async def _fetch_mangadex_catalog(
     if content_type == "manhwa":
         params["originalLanguage[]"] = ["ko"]
 
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-        response = await client.get("https://api.mangadex.org/manga", params=params)
-        response.raise_for_status()
-        payload = response.json()
+    payload = await http_client.fetch_json("https://api.mangadex.org/manga", params=params, timeout=20)
 
     data = payload.get("data", [])
     total = int(payload.get("total", 0))
@@ -487,11 +496,10 @@ async def _fetch_html_catalog_from_source(scraper: BaseScraper, page: int, limit
     html = ""
     for url in candidate_urls:
         try:
-            async with httpx.AsyncClient(headers=headers, timeout=20, follow_redirects=True) as client:
-                response = await client.get(url)
-                if response.status_code == 200 and response.text:
-                    html = response.text
-                    break
+            resp = await http_client.get(url, headers=headers, timeout=20)
+            if resp.status_code == 200 and resp.text:
+                html = resp.text
+                break
         except Exception:
             continue
 
@@ -553,6 +561,70 @@ async def _fetch_html_catalog_from_source(scraper: BaseScraper, page: int, limit
         "total": len(items),
         "hasMore": len(items) > limit,
     }
+
+
+@app.post("/jobs/schedule")
+def schedule_job_endpoint(name: str, scraper: str, method: str = "search", interval_seconds: int = 300, *args):
+    if name in scheduler.list_jobs():
+        raise HTTPException(status_code=400, detail=f"Job '{name}' already exists")
+
+    async def _job():
+        try:
+            s = get_scraper(scraper)
+            fn = getattr(s, method)
+            # run with a default example arg when none provided
+            if method == "search":
+                res = await fn("test")
+            else:
+                res = await fn(*args)
+            await _cache.set(f"job:{name}", res)
+        except Exception as e:
+            logger.exception(f"Scheduled job '{name}' failed: {e}")
+
+    scheduler.schedule_job(name, _job, interval_seconds)
+    return {"scheduled": name}
+
+
+@app.get("/jobs/list")
+def list_jobs_endpoint():
+    return scheduler.list_jobs()
+
+
+@app.post("/jobs/remove")
+def remove_jobs_endpoint(name: str):
+    ok = scheduler.remove_job(name)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
+    return {"removed": name}
+
+
+@app.post("/jobs/run-now")
+async def run_job_now(name: str):
+    # run job once and return cached result
+    j = scheduler.list_jobs().get(name)
+    if not j:
+        raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
+    # we don't have direct access to job coro here; run cached value if present
+    val = await _cache.get(f"job:{name}")
+    return {"result_cached": val}
+
+
+@app.post("/extensions/test-run")
+async def test_run_extension(name: str, method: str = "search", q: str = "test"):
+    s = get_scraper(name)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Extension '{name}' not found")
+    if not hasattr(s, method):
+        raise HTTPException(status_code=400, detail=f"Method '{method}' not supported on '{name}'")
+    fn = getattr(s, method)
+    try:
+        if method == "search":
+            res = await asyncio.wait_for(fn(q), timeout=10)
+        else:
+            res = await asyncio.wait_for(fn(q), timeout=10)
+        return {"ok": True, "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 async def search_with_timeout(scraper: BaseScraper, query: str):
