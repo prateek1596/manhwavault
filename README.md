@@ -17,6 +17,29 @@ ManhwaVault is a multi-client manhwa reader stack with:
 
 Backend runs on `http://127.0.0.1:8000` by default.
 
+#### Development (backend)
+
+1. Create a virtual environment and activate it:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+2. Install runtime and dev dependencies:
+
+```powershell
+pip install -r backend/requirements.txt
+pip install -r backend/requirements-dev.txt
+```
+
+3. Run the FastAPI app for development:
+
+```powershell
+cd backend
+uvicorn main:app --reload --port 8000
+```
+
 ### 2) Mobile (Expo)
 
 ```powershell
