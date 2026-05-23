@@ -55,6 +55,60 @@ def get_scraper(source: str) -> BaseScraper:
     return scrapers[source]
 
 
+# --- Extension management API models & endpoints
+
+
+class InstallRequest(BaseModel):
+    git_url: str
+
+
+class NameRequest(BaseModel):
+    name: str
+
+
+@app.post("/extensions/install")
+def install_extension(req: InstallRequest):
+    try:
+        name = manager.install(req.git_url)
+        global scrapers
+        scrapers = manager.load_all()
+        return {"installed": name}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/extensions/update")
+def update_extension(req: NameRequest):
+    try:
+        name = manager.update(req.name)
+        global scrapers
+        scrapers = manager.load_all()
+        return {"updated": name}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/extensions/remove")
+def remove_extension(req: NameRequest):
+    try:
+        name = manager.remove(req.name)
+        global scrapers
+        scrapers = manager.load_all()
+        return {"removed": name}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/extensions/list")
+def list_extensions():
+    return manager.list_installed()
+
+
+@app.get("/extensions/check-updates")
+def check_updates():
+    return manager.check_updates()
+
+
 # ── Search ────────────────────────────────────────────────────────────────────
 
 SEARCH_TIMEOUT_SECONDS = 8
