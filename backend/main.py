@@ -12,6 +12,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from core import http_client, cache, scheduler
+from core.auth import require_api_key
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
+import json
+from pathlib import Path
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
@@ -24,6 +29,11 @@ logger = logging.getLogger(__name__)
 manager = ExtensionManager()
 scrapers: dict[str, BaseScraper] = {}
 _cache = cache.SimpleCache(ttl=300)
+_jobs_file = Path(__file__).parent / "jobs.json"
+
+# Prometheus metrics
+METRIC_EXTENSION_INSTALLS = Counter("manhwavault_extension_installs_total", "Total extension installs")
+METRIC_TEST_RUNS = Counter("manhwavault_test_runs_total", "Total extension test runs")
 suggestion_refresh_counters: Counter = Counter()
 suggestion_click_counters: Counter = Counter()
 suggestion_client_counters: Counter = Counter()
@@ -38,7 +48,34 @@ async def lifespan(app: FastAPI):
     global scrapers
     scrapers = manager.load_all()
     logger.info(f"Loaded {len(scrapers)} extension(s): {list(scrapers.keys())}")
-    # scheduler has no explicit start step; tasks are created via API
+    # Scheduler: load persisted jobs and schedule them
+    if _jobs_file.exists():
+        try:
+            body = json.loads(_jobs_file.read_text())
+            for meta in body:
+                name = meta.get("name")
+                scraper_name = meta.get("scraper")
+                method = meta.get("method")
+                interval = int(meta.get("interval_seconds", 300))
+
+                async def _make_job(sname=scraper_name, m=method, n=name):
+                    try:
+                        s = get_scraper(sname)
+                        fn = getattr(s, m)
+                        if m == "search":
+                            res = await fn("test")
+                        else:
+                            res = await fn()
+                        await _cache.set(f"job:{n}", res)
+                    except Exception as e:
+                        logger.exception(e)
+
+                try:
+                    scheduler.schedule_job(name, _make_job, interval)
+                except Exception:
+                    logger.exception(f"Could not schedule persisted job {name}")
+        except Exception:
+            logger.exception("Failed to load jobs.json")
     yield
 
 
@@ -82,6 +119,7 @@ class NameRequest(BaseModel):
 def install_extension(req: InstallRequest):
     try:
         name = manager.install(req.git_url)
+        METRIC_EXTENSION_INSTALLS.inc()
         global scrapers
         scrapers = manager.load_all()
         return {"installed": name}
@@ -582,6 +620,15 @@ def schedule_job_endpoint(name: str, scraper: str, method: str = "search", inter
             logger.exception(f"Scheduled job '{name}' failed: {e}")
 
     scheduler.schedule_job(name, _job, interval_seconds)
+    # persist job metadata
+    try:
+        data = []
+        if _jobs_file.exists():
+            data = json.loads(_jobs_file.read_text())
+        data.append({"name": name, "scraper": scraper, "method": method, "interval_seconds": interval_seconds})
+        _jobs_file.write_text(json.dumps(data, indent=2))
+    except Exception:
+        logger.exception("Failed to persist job metadata")
     return {"scheduled": name}
 
 
@@ -595,6 +642,14 @@ def remove_jobs_endpoint(name: str):
     ok = scheduler.remove_job(name)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Job '{name}' not found")
+    # remove from persisted file
+    try:
+        if _jobs_file.exists():
+            data = json.loads(_jobs_file.read_text())
+            data = [d for d in data if d.get("name") != name]
+            _jobs_file.write_text(json.dumps(data, indent=2))
+    except Exception:
+        logger.exception("Failed to update jobs.json on remove")
     return {"removed": name}
 
 
