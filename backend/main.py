@@ -18,10 +18,11 @@ from prometheus_client import Counter as PromCounter, generate_latest, CONTENT_T
 from fastapi.responses import Response
 import json
 from pathlib import Path
+from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
-from core.extension_manager import ExtensionManager
+from core.extension_manager import ExtensionManager, EXTENSIONS_DIR
 from core.base_scraper import BaseScraper
 
 logging.basicConfig(level=logging.INFO)
@@ -986,6 +987,34 @@ async def search_by_source(
     return grouped
 
 
+@app.get("/search/fuzzy")
+async def search_fuzzy(q: str = Query(..., min_length=1), source: str = "all", limit: int = Query(10, ge=1, le=50)):
+    """Return fuzzy-matched titles across sources using SequenceMatcher."""
+    if not scrapers:
+        raise HTTPException(503, "No extensions installed. Install one first.")
+
+    if source == "all":
+        targets = [s for s in scrapers.values() if s]
+    else:
+        targets = [get_scraper(source)]
+
+    # gather search results from targets
+    tasks = [search_with_timeout(s, q) for s in targets]
+    gathered = await asyncio.gather(*tasks, return_exceptions=True)
+
+    candidates = []
+    for res in gathered:
+        if isinstance(res, Exception):
+            continue
+        for item in res:
+            title = item.get("title") if isinstance(item, dict) else getattr(item, "title", "")
+            score = SequenceMatcher(None, q.lower(), (title or "").lower()).ratio()
+            candidates.append({"id": item.get("id") if isinstance(item, dict) else getattr(item, "id", ""), "title": title, "url": item.get("url") if isinstance(item, dict) else getattr(item, "url", ""), "source": item.get("source") if isinstance(item, dict) else getattr(item, "source", ""), "score": score})
+
+    candidates = sorted(candidates, key=lambda x: x["score"], reverse=True)
+    return candidates[:limit]
+
+
 # ── Manhwa detail ─────────────────────────────────────────────────────────────
 
 @app.get("/manhwa/detail")
@@ -1348,6 +1377,56 @@ async def check_extension_updates():
     return manager.check_updates()
 
 
+@app.post("/extensions/auto-update", dependencies=[Depends(require_api_key)])
+def extensions_auto_update(enable: bool = True, interval_seconds: int = 60 * 60 * 24):
+    """Enable or disable periodic auto-updates for installed extensions.
+    When enabled, a background job will attempt to update all installed extensions at the given interval.
+    """
+    job_name = "auto-update-extensions"
+    if not enable:
+        ok = scheduler.remove_job(job_name)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Auto-update job not found")
+        return {"removed": job_name}
+
+    async def _job():
+        for entry in manager.list_installed():
+            try:
+                manager.update(entry.get("name"))
+            except Exception:
+                logger.exception(f"Auto-update failed for {entry.get('name')}")
+
+    try:
+        scheduler.schedule_job(job_name, _job, interval_seconds)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Job '{job_name}' already scheduled")
+    return {"scheduled": job_name}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "extensions": list(scrapers.keys())}
+
+
+@app.get("/health/details")
+async def health_details():
+    """Detailed health showing installed extensions and load errors."""
+    installed = manager.list_installed()
+    failures = []
+    for ext_dir in EXTENSIONS_DIR.iterdir():
+        if not ext_dir.is_dir() or ext_dir.name.startswith("_"):
+            continue
+        manifest_path = ext_dir / "extension.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = manager._read_manifest(ext_dir)
+            try:
+                # attempt to load to capture load-time errors
+                manager._load_class(ext_dir, manifest)
+            except Exception as e:
+                failures.append({"name": manifest.get("name", ext_dir.name), "error": str(e)})
+        except Exception as e:
+            failures.append({"name": ext_dir.name, "error": f"manifest read error: {e}"})
+
+    return {"status": "ok", "extensions": installed, "loadErrors": failures}
