@@ -1,5 +1,6 @@
 import asyncio
-from collections import Counter, defaultdict, deque
+from collections import defaultdict, deque
+import collections
 from datetime import datetime, timezone
 import logging
 import re
@@ -8,12 +9,12 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from core import http_client, cache, scheduler
 from core.auth import require_api_key
-from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter as PromCounter, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 import json
 from pathlib import Path
@@ -32,14 +33,14 @@ _cache = cache.SimpleCache(ttl=300)
 _jobs_file = Path(__file__).parent / "jobs.json"
 
 # Prometheus metrics
-METRIC_EXTENSION_INSTALLS = Counter("manhwavault_extension_installs_total", "Total extension installs")
-METRIC_TEST_RUNS = Counter("manhwavault_test_runs_total", "Total extension test runs")
-suggestion_refresh_counters: Counter = Counter()
-suggestion_click_counters: Counter = Counter()
-suggestion_client_counters: Counter = Counter()
-suggestion_surface_counters: Counter = Counter()
-suggestion_client_event_counters: defaultdict[str, Counter] = defaultdict(Counter)
-suggestion_surface_event_counters: defaultdict[str, Counter] = defaultdict(Counter)
+METRIC_EXTENSION_INSTALLS = PromCounter("manhwavault_extension_installs_total", "Total extension installs")
+METRIC_TEST_RUNS = PromCounter("manhwavault_test_runs_total", "Total extension test runs")
+suggestion_refresh_counters = collections.Counter()
+suggestion_click_counters = collections.Counter()
+suggestion_client_counters = collections.Counter()
+suggestion_surface_counters = collections.Counter()
+suggestion_client_event_counters = defaultdict(collections.Counter)
+suggestion_surface_event_counters = defaultdict(collections.Counter)
 suggestion_recent_events: deque = deque(maxlen=100)
 
 
@@ -102,61 +103,6 @@ def get_scraper(source: str) -> BaseScraper:
     if source not in scrapers:
         raise HTTPException(404, f"Extension '{source}' not found. Installed: {list(scrapers.keys())}")
     return scrapers[source]
-
-
-# --- Extension management API models & endpoints
-
-
-class InstallRequest(BaseModel):
-    git_url: str
-
-
-class NameRequest(BaseModel):
-    name: str
-
-
-@app.post("/extensions/install", dependencies=[Depends(require_api_key)])
-def install_extension(req: InstallRequest):
-    try:
-        name = manager.install(req.git_url)
-        METRIC_EXTENSION_INSTALLS.inc()
-        global scrapers
-        scrapers = manager.load_all()
-        return {"installed": name}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/extensions/update", dependencies=[Depends(require_api_key)])
-def update_extension(req: NameRequest):
-    try:
-        name = manager.update(req.name)
-        global scrapers
-        scrapers = manager.load_all()
-        return {"updated": name}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/extensions/remove", dependencies=[Depends(require_api_key)])
-def remove_extension(req: NameRequest):
-    try:
-        name = manager.remove(req.name)
-        global scrapers
-        scrapers = manager.load_all()
-        return {"removed": name}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/extensions/list")
-def list_extensions():
-    return manager.list_installed()
-
-
-@app.get("/extensions/check-updates")
-def check_updates():
-    return manager.check_updates()
 
 
 # ── Search ────────────────────────────────────────────────────────────────────
@@ -733,7 +679,7 @@ async def search_suggestions(
 
     collected = []
     deferred = []
-    source_counts: Counter = Counter()
+    source_counts = collections.Counter()
     per_source_cap = max(1, min(4, (limit + 3) // 4)) if source == "all" else limit
 
     for query in seeded_queries:
@@ -1335,7 +1281,7 @@ async def reload_extensions():
 @app.get("/extensions/stats")
 async def extension_stats():
     sources = list(scrapers.values())
-    by_language = Counter(getattr(s, "language", "unknown") for s in sources)
+    by_language = collections.Counter(getattr(s, "language", "unknown") for s in sources)
     return {
         "total": len(sources),
         "nsfw": sum(1 for s in sources if getattr(s, "nsfw", False)),
