@@ -21,6 +21,7 @@ from pathlib import Path
 from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
+from fastapi import Body
 
 from core.extension_manager import ExtensionManager, EXTENSIONS_DIR
 from core.base_scraper import BaseScraper
@@ -32,6 +33,33 @@ manager = ExtensionManager()
 scrapers: dict[str, BaseScraper] = {}
 _cache = cache.SimpleCache(ttl=300)
 _jobs_file = Path(__file__).parent / "jobs.json"
+_progress_file = Path(__file__).parent / "reading_progress.json"
+
+
+class ReadingProgress(BaseModel):
+    user_id: str | None = None
+    manga_id: str | None = None
+    chapter_url: str | None = None
+    page_num: int | None = None
+    position: float | None = None
+    updated_at: Optional[str] = None
+
+
+def _load_progress() -> dict:
+    try:
+        if not _progress_file.exists():
+            return {}
+        return json.loads(_progress_file.read_text()) or {}
+    except Exception:
+        logger.exception("Failed to load reading progress file")
+        return {}
+
+
+def _save_progress(data: dict):
+    try:
+        _progress_file.write_text(json.dumps(data, indent=2))
+    except Exception:
+        logger.exception("Failed to save reading progress file")
 
 # Prometheus metrics
 METRIC_EXTENSION_INSTALLS = PromCounter("manhwavault_extension_installs_total", "Total extension installs")
@@ -634,6 +662,50 @@ async def test_run_extension(name: str, method: str = "search", q: str = "test")
 def metrics():
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/progress")
+def get_progress(manga_id: str | None = None, chapter_url: str | None = None, user_id: str | None = None):
+    """Get saved reading progress for a user. If no `user_id` provided, returns anonymous data (if any)."""
+    store = _load_progress()
+    uid = user_id or "anonymous"
+    user_data = store.get(uid, {})
+
+    # Prefer chapter-level progress when available
+    if chapter_url:
+        p = user_data.get(chapter_url)
+        if p:
+            return p
+
+    # Fallback to manga-level progress
+    if manga_id:
+        p = user_data.get(manga_id)
+        if p:
+            return p
+
+    return {}
+
+
+@app.put("/progress", dependencies=[])
+def put_progress(payload: ReadingProgress = Body(...)):
+    """Save reading progress. Uses `user_id` if provided, otherwise `anonymous`."""
+    data = _load_progress()
+    uid = payload.user_id or "anonymous"
+    if uid not in data:
+        data[uid] = {}
+
+    key = payload.chapter_url or payload.manga_id or "unknown"
+    entry = {
+        "manga_id": payload.manga_id,
+        "chapter_url": payload.chapter_url,
+        "page_num": payload.page_num,
+        "position": payload.position,
+        "updated_at": payload.updated_at or datetime.now(timezone.utc).isoformat(),
+    }
+
+    data[uid][key] = entry
+    _save_progress(data)
+    return {"ok": True, "saved": entry}
 
 
 async def search_with_timeout(scraper: BaseScraper, query: str):

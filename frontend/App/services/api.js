@@ -163,6 +163,29 @@ export async function trackSuggestionTelemetry(params = {}) {
   return response.data;
 }
 
+export async function getReadingProgress(params = {}) {
+  const response = await api.get('/progress', {
+    params: {
+      manga_id: params.mangaId,
+      chapter_url: params.chapterUrl,
+      user_id: params.userId,
+    },
+  });
+  return response.data || {};
+}
+
+export async function setReadingProgress(payload = {}) {
+  const body = {
+    user_id: payload.userId,
+    manga_id: payload.mangaId,
+    chapter_url: payload.chapterUrl,
+    page_num: payload.pageNum,
+    position: payload.position,
+  };
+  const response = await api.put('/progress', body);
+  return response.data || {};
+}
+
 export async function getSuggestionTelemetry() {
   const response = await api.get('/telemetry/suggestions');
   return response.data || {

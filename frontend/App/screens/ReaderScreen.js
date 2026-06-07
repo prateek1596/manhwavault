@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
-import { api } from '@services/api';
+import { api, getReadingProgress, setReadingProgress } from '@services/api';
 import useReaderSettings from '../hooks/useReaderSettings';
 
 export default function ReaderScreen({ route, navigation }) {
@@ -21,12 +21,15 @@ export default function ReaderScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [imageSizes, setImageSizes] = useState({});
+  const scrollRef = useRef(null);
+  const lastSavedPageRef = useRef(null);
+  const saveTimerRef = useRef(null);
   const {
     settings,
     loading: readerSettingsLoading,
   } = useReaderSettings();
 
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isVerticalFlow = settings.readingMode === 'vertical';
 
   useEffect(() => {
@@ -72,10 +75,32 @@ export default function ReaderScreen({ route, navigation }) {
       return;
     }
 
+    // Restore reading progress when images are available
+    (async () => {
+      try {
+        const saved = await getReadingProgress({ mangaId: sourceId, chapterUrl });
+        const pageNum = saved?.page_num || saved?.pageNum || 0;
+        if (pageNum && scrollRef.current) {
+          const y = Math.max(0, pageNum * (height));
+          // approximate jump to page position
+          scrollRef.current.scrollTo({ y, animated: false });
+          lastSavedPageRef.current = pageNum;
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+
     const urls = images.map((item) => item.url).filter(Boolean);
     const prefetchBatch = urls.map((url) => Image.prefetch(url));
     Promise.allSettled(prefetchBatch).catch(() => {});
   }, [images]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,9 +205,31 @@ export default function ReaderScreen({ route, navigation }) {
       <StatusBar hidden />
 
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
         contentContainerStyle={styles.readerStage}
         showsVerticalScrollIndicator={false}
+        onScroll={({ nativeEvent }) => {
+          const offsetY = nativeEvent.contentOffset?.y || 0;
+          const pageIndex = Math.max(0, Math.round(offsetY / (Math.max(1, height))));
+          if (lastSavedPageRef.current === pageIndex) return;
+          lastSavedPageRef.current = pageIndex;
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = setTimeout(() => {
+            try {
+              setReadingProgress({
+                userId: undefined,
+                mangaId: sourceId,
+                chapterUrl: chapterUrl,
+                pageNum: pageIndex,
+                position: 0,
+              });
+            } catch (e) {
+              // ignore
+            }
+          }, 800);
+        }}
+        scrollEventThrottle={200}
       >
         {images.map((item, index) => {
           const size = imageSizes[item.url] || { width: width, height: Math.round(width * 1.5) };
