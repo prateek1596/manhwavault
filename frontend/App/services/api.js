@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Platform, NativeModules } from 'react-native';
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system';
 
 function isLoopbackHost(host) {
   if (!host) return true;
@@ -197,6 +198,37 @@ export async function downloadChapter(params = {}) {
     timeout: 120000,
   });
   return response.data || {};
+}
+
+export async function downloadAndSaveChapter(params = {}) {
+  // Call server to prepare and return file URLs
+  const serverRes = await downloadChapter(params);
+  const files = serverRes.files || [];
+  const saved = [];
+
+  if (files.length === 0) return { server: serverRes, localFiles: [] };
+
+  const safeDir = `${FileSystem.documentDirectory}manhwavault/offline/${serverRes.title}/`;
+  try {
+    // Ensure directory exists
+    await FileSystem.makeDirectoryAsync(safeDir, { intermediates: true });
+  } catch (e) {
+    // ignore if already exists
+  }
+
+  for (const f of files) {
+    const remote = f && f.startsWith('http') ? f : `${API_BASE_URL}${f}`;
+    const filename = remote.split('/').pop().split('?')[0] || `img_${Date.now()}.jpg`;
+    const localPath = `${safeDir}${filename}`;
+    try {
+      const res = await FileSystem.downloadAsync(remote, localPath);
+      saved.push(res.uri);
+    } catch (err) {
+      console.log('[downloadAndSaveChapter] failed to download', remote, err.message || err);
+    }
+  }
+
+  return { server: serverRes, localFiles: saved };
 }
 
 export async function getSuggestionTelemetry() {

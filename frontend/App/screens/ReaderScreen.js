@@ -12,8 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
-import { api, getReadingProgress, setReadingProgress } from '@services/api';
-import { downloadChapter } from '@services/api';
+import { api, getReadingProgress, setReadingProgress, downloadAndSaveChapter } from '@services/api';
 import useReaderSettings from '../hooks/useReaderSettings';
 
 export default function ReaderScreen({ route, navigation }) {
@@ -221,8 +220,14 @@ export default function ReaderScreen({ route, navigation }) {
         onPress={async () => {
           try {
             Alert.alert('Download', 'Starting download...');
-            const res = await downloadChapter({ chapterUrl, source: sourceId, title });
-            Alert.alert('Download complete', `Saved ${res.files?.length || 0} files to ${res.path}`);
+            const { server, localFiles } = await downloadAndSaveChapter({ chapterUrl, source: sourceId, title });
+            if (localFiles && localFiles.length) {
+              Alert.alert('Download complete', `Saved ${localFiles.length} files to device storage.`);
+            } else if (server && server.files && server.files.length) {
+              Alert.alert('Download complete', `Server saved ${server.files.length} files, but device save failed.`);
+            } else {
+              Alert.alert('Download', 'No files were saved.');
+            }
           } catch (e) {
             console.error('Download failed', e);
             Alert.alert('Download failed', e?.message || 'Unknown error');
