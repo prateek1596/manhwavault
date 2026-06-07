@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import httpx
 from core import http_client, cache, scheduler
 from core.auth import require_api_key
@@ -126,6 +127,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve offline downloads
+offline_dir = Path(__file__).parent / "offline"
+offline_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/offline", StaticFiles(directory=str(offline_dir)), name="offline")
 
 
 def get_scraper(source: str) -> BaseScraper:
@@ -1127,6 +1133,63 @@ async def chapter_images(url: str, source: str):
     try:
         return await scraper.get_images(url)
     except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/download/chapter")
+async def download_chapter(url: str, source: str, title: str = "chapter"):
+    """Download chapter images to server `offline` folder and return URLs.
+
+    Returns list of file URLs under `/offline/...`.
+    """
+    scraper = get_scraper(source)
+    if source != "MangaDex" and _is_mangadex_uuid(url):
+        md = _get_mangadex_scraper()
+        if md:
+            scraper = md
+
+    try:
+        images = await scraper.get_images(url)
+        if not images:
+            raise HTTPException(404, "No images found for chapter")
+
+        # Normalize images list
+        urls = [img if isinstance(img, str) else img.get("url") for img in images]
+        safe_title = re.sub(r"[^A-Za-z0-9_-]", "-", title).strip("-")[:120]
+        dest = offline_dir / safe_title
+        dest.mkdir(parents=True, exist_ok=True)
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            tasks = []
+            for i, img_url in enumerate(urls):
+                if not img_url:
+                    continue
+
+                async def _fetch_and_write(i=i, img_url=img_url):
+                    try:
+                        resp = await client.get(img_url)
+                        if resp.status_code == 200 and resp.content:
+                            ext = Path(img_url).suffix.split("?")[0] or ".jpg"
+                            fname = f"page_{i+1:03d}{ext}"
+                            (dest / fname).write_bytes(resp.content)
+                            return f"/offline/{safe_title}/{fname}"
+                    except Exception:
+                        logger.exception(f"Failed to download {img_url}")
+                    return None
+
+                tasks.append(_fetch_and_write())
+
+            results = await asyncio.gather(*tasks)
+
+        file_urls = [r for r in results if r]
+        if not file_urls:
+            raise HTTPException(500, "Failed to download any images")
+
+        return {"title": safe_title, "files": file_urls, "path": f"/offline/{safe_title}/"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(e)
         raise HTTPException(500, str(e))
 
 

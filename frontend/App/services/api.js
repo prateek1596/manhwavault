@@ -186,6 +186,19 @@ export async function setReadingProgress(payload = {}) {
   return response.data || {};
 }
 
+export async function downloadChapter(params = {}) {
+  // POST with query params (server expects url, source, title)
+  const response = await api.post('/download/chapter', null, {
+    params: {
+      url: params.chapterUrl,
+      source: params.source,
+      title: params.title,
+    },
+    timeout: 120000,
+  });
+  return response.data || {};
+}
+
 export async function getSuggestionTelemetry() {
   const response = await api.get('/telemetry/suggestions');
   return response.data || {
