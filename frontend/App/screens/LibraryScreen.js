@@ -139,6 +139,12 @@ export default function LibraryScreen({ navigation }) {
         <Text style={styles.subtitle}>
           Tap any title to jump back into chapters with the saved source and details.
         </Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Downloads')}
+          style={{ marginTop: 12, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
+        >
+          <Text style={{ color: colors.primary, fontWeight: '700' }}>Downloads</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>

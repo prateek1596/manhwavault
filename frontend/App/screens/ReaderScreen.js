@@ -35,6 +35,14 @@ export default function ReaderScreen({ route, navigation }) {
 
   useEffect(() => {
     const fetchImages = async () => {
+      // Support local files passed from Downloads screen
+      if (route.params?.localFiles && Array.isArray(route.params.localFiles)) {
+        const local = route.params.localFiles.map((uri, index) => ({ url: uri, page_num: index + 1 }));
+        setImages(local);
+        setLoading(false);
+        return;
+      }
+
       if (!sourceId || !chapterUrl) {
         setError('Missing chapter info. Please reopen this chapter.');
         setLoading(false);
@@ -69,7 +77,7 @@ export default function ReaderScreen({ route, navigation }) {
     };
 
     fetchImages();
-  }, [sourceId, chapterUrl]);
+  }, [sourceId, chapterUrl, route.params]);
 
   useEffect(() => {
     if (!images.length) {
