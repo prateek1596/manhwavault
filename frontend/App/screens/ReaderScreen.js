@@ -9,9 +9,11 @@ import {
   ActivityIndicator,
   StatusBar,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
 import { useTheme } from '@theme/ThemeContext';
 import { api, getReadingProgress, setReadingProgress } from '@services/api';
+import { downloadChapter } from '@services/api';
 import useReaderSettings from '../hooks/useReaderSettings';
 
 export default function ReaderScreen({ route, navigation }) {
@@ -163,6 +165,16 @@ export default function ReaderScreen({ route, navigation }) {
       backgroundColor: '#000',
       paddingBottom: 0,
     },
+    downloadButton: {
+      position: 'absolute',
+      right: 12,
+      top: 12,
+      backgroundColor: '#111',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      zIndex: 1000,
+    },
   });
 
   if (loading) {
@@ -203,6 +215,22 @@ export default function ReaderScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar hidden />
+
+      <TouchableOpacity
+        style={styles.downloadButton}
+        onPress={async () => {
+          try {
+            Alert.alert('Download', 'Starting download...');
+            const res = await downloadChapter({ chapterUrl, source: sourceId, title });
+            Alert.alert('Download complete', `Saved ${res.files?.length || 0} files to ${res.path}`);
+          } catch (e) {
+            console.error('Download failed', e);
+            Alert.alert('Download failed', e?.message || 'Unknown error');
+          }
+        }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '600' }}>Download</Text>
+      </TouchableOpacity>
 
       <ScrollView
         ref={scrollRef}
