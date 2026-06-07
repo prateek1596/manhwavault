@@ -12,6 +12,7 @@ import LibraryScreen from '@screens/LibraryScreen';
 import SettingsScreen from '@screens/SettingsScreen';
 import MangaDetailScreen from '@screens/MangaDetailScreen';
 import ReaderScreen from '@screens/ReaderScreen';
+import DownloadsScreen from '@screens/DownloadsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -49,6 +50,13 @@ function HomeStackNavigator() {
         options={({ route }) => ({
           title: route.params?.title || 'Manga',
         })}
+      />
+      <Stack.Screen
+        name="Downloads"
+        component={DownloadsScreen}
+        options={{
+          title: 'Downloads',
+        }}
       />
       <Stack.Screen
         name="Reader"
