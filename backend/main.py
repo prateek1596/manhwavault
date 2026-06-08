@@ -62,6 +62,11 @@ def _save_progress(data: dict):
     except Exception:
         logger.exception("Failed to save reading progress file")
 
+
+def _safe_download_title(title: str) -> str:
+    safe_title = re.sub(r"[^A-Za-z0-9_-]", "-", title or "chapter").strip("-")[:120]
+    return safe_title or "chapter"
+
 # Prometheus metrics
 METRIC_EXTENSION_INSTALLS = PromCounter("manhwavault_extension_installs_total", "Total extension installs")
 METRIC_TEST_RUNS = PromCounter("manhwavault_test_runs_total", "Total extension test runs")
@@ -1155,7 +1160,7 @@ async def download_chapter(url: str, source: str, title: str = "chapter"):
 
         # Normalize images list
         urls = [img if isinstance(img, str) else img.get("url") for img in images]
-        safe_title = re.sub(r"[^A-Za-z0-9_-]", "-", title).strip("-")[:120]
+        safe_title = _safe_download_title(title)
         dest = offline_dir / safe_title
         dest.mkdir(parents=True, exist_ok=True)
 
@@ -1190,6 +1195,30 @@ async def download_chapter(url: str, source: str, title: str = "chapter"):
         raise
     except Exception as e:
         logger.exception(e)
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/download/chapter")
+async def delete_downloaded_chapter(title: str):
+    """Delete a server-side downloaded chapter folder."""
+    safe_title = _safe_download_title(title)
+    dest = offline_dir / safe_title
+
+    if not dest.exists():
+        return {"ok": True, "removed": False, "title": safe_title}
+
+    try:
+        for child in dest.iterdir():
+            if child.is_file() or child.is_symlink():
+                child.unlink(missing_ok=True)
+            elif child.is_dir():
+                import shutil
+
+                shutil.rmtree(child, ignore_errors=True)
+        dest.rmdir()
+        return {"ok": True, "removed": True, "title": safe_title}
+    except Exception as e:
+        logger.exception("Failed to delete downloaded chapter folder")
         raise HTTPException(500, str(e))
 
 

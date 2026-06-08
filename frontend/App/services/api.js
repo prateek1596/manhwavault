@@ -200,6 +200,15 @@ export async function downloadChapter(params = {}) {
   return response.data || {};
 }
 
+export async function deleteDownloadedChapter(params = {}) {
+  const response = await api.delete('/download/chapter', {
+    params: {
+      title: params.title,
+    },
+  });
+  return response.data || {};
+}
+
 export async function downloadAndSaveChapter(params = {}) {
   // Call server to prepare and return file URLs
   const serverRes = await downloadChapter(params);
