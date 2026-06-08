@@ -115,15 +115,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "loaded_extensions": [s.get("name") if isinstance(s, dict) else getattr(s, "name", "") for s in manager.list_installed()],
-        "scrapers": list(scrapers.keys()),
-    }
-
-
 app = FastAPI(title="ManhwaVault API", lifespan=lifespan)
 
 app.add_middleware(
@@ -137,6 +128,15 @@ app.add_middleware(
 offline_dir = Path(__file__).parent / "offline"
 offline_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/offline", StaticFiles(directory=str(offline_dir)), name="offline")
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "loaded_extensions": [s.get("name") if isinstance(s, dict) else getattr(s, "name", "") for s in manager.list_installed()],
+        "scrapers": list(scrapers.keys()),
+    }
 
 
 def get_scraper(source: str) -> BaseScraper:
