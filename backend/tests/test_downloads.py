@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import main as appmod
+import main as appmod
 from core.base_scraper import BaseScraper
 
 
