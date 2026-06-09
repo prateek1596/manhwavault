@@ -21,6 +21,7 @@ export default function ReaderScreen({ route, navigation }) {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dlProgress, setDlProgress] = useState(null);
   const [imageSizes, setImageSizes] = useState({});
   const scrollRef = useRef(null);
   const lastSavedPageRef = useRef(null);
@@ -228,7 +229,11 @@ export default function ReaderScreen({ route, navigation }) {
         onPress={async () => {
           try {
             Alert.alert('Download', 'Starting download...');
-            const { server, localFiles } = await downloadAndSaveChapter({ chapterUrl, source: sourceId, title });
+            setDlProgress({ percent: 0, filename: '' });
+            const { server, localFiles } = await downloadAndSaveChapter({ chapterUrl, source: sourceId, title }, (progress) => {
+              // progress: { index, loaded, total, percent, filename }
+              setDlProgress(progress);
+            });
             if (localFiles && localFiles.length) {
               Alert.alert('Download complete', `Saved ${localFiles.length} files to device storage.`);
             } else if (server && server.files && server.files.length) {
@@ -239,11 +244,22 @@ export default function ReaderScreen({ route, navigation }) {
           } catch (e) {
             console.error('Download failed', e);
             Alert.alert('Download failed', e?.message || 'Unknown error');
+          } finally {
+            setDlProgress(null);
           }
         }}
       >
         <Text style={{ color: '#fff', fontWeight: '600' }}>Download</Text>
       </TouchableOpacity>
+
+      {dlProgress ? (
+        <View style={{ position: 'absolute', right: 12, top: 56, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 8 }}>
+          <Text style={{ color: '#fff', fontSize: 12 }}>{dlProgress.filename || 'Downloading...'} {dlProgress.percent ? `${Math.round(dlProgress.percent * 100)}%` : ''}</Text>
+          <View style={{ width: 120, height: 6, backgroundColor: '#222', borderRadius: 6, marginTop: 6 }}>
+            <View style={{ width: `${Math.round((dlProgress.percent || 0) * 100)}%`, height: '100%', backgroundColor: '#30a14e', borderRadius: 6 }} />
+          </View>
+        </View>
+      ) : null}
 
       <ScrollView
         ref={scrollRef}
