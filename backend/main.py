@@ -1192,23 +1192,54 @@ async def download_chapter(url: str, source: str, title: str = "chapter"):
         if not file_urls:
             raise HTTPException(500, "Failed to download any images")
 
-        # Attempt to generate a small thumbnail from the first successfully downloaded image
-        thumb_url = None
+        # Generate cached thumbnails in multiple sizes and webp format.
+        thumbs = {}
         try:
             first_file = dest / Path(file_urls[0]).name
             if first_file.exists():
-                with Image.open(first_file) as im:
-                    im = im.convert('RGB')
-                    im.thumbnail((320, 320))
-                    thumb_path = dest / 'thumb.jpg'
-                    im.save(thumb_path, format='JPEG', quality=80)
-                    thumb_url = f"/offline/{safe_title}/thumb.jpg"
-        except Exception:
-            logger.exception("Failed to create thumbnail for %s", safe_title)
+                # Only regenerate if thumbs missing
+                thumb_jpg = dest / 'thumb.jpg'
+                thumb_small = dest / 'thumb_small.jpg'
+                thumb_large = dest / 'thumb_large.jpg'
+                thumb_webp = dest / 'thumb.webp'
 
-        resp = {"title": safe_title, "files": file_urls, "path": f"/offline/{safe_title}/"}
-        if thumb_url:
-            resp["thumb"] = thumb_url
+                if not (thumb_jpg.exists() and thumb_small.exists() and thumb_large.exists() and thumb_webp.exists()):
+                    with Image.open(first_file) as im:
+                        im = im.convert('RGB')
+                        # Large
+                        im_large = im.copy()
+                        im_large.thumbnail((640, 640))
+                        im_large.save(thumb_large, format='JPEG', quality=82)
+                        # Medium / default
+                        im_med = im.copy()
+                        im_med.thumbnail((320, 320))
+                        im_med.save(thumb_jpg, format='JPEG', quality=80)
+                        # Small
+                        im_small = im.copy()
+                        im_small.thumbnail((160, 160))
+                        im_small.save(thumb_small, format='JPEG', quality=76)
+                        # WebP
+                        try:
+                            im_webp = im.copy()
+                            im_webp.thumbnail((320, 320))
+                            im_webp.save(thumb_webp, format='WEBP', quality=72)
+                        except Exception:
+                            # WebP optional; continue
+                            logger.debug('WebP save failed for %s', first_file)
+
+                thumbs = {
+                    'small': f"/offline/{safe_title}/thumb_small.jpg" if (dest / 'thumb_small.jpg').exists() else None,
+                    'default': f"/offline/{safe_title}/thumb.jpg" if (dest / 'thumb.jpg').exists() else None,
+                    'large': f"/offline/{safe_title}/thumb_large.jpg" if (dest / 'thumb_large.jpg').exists() else None,
+                    'webp': f"/offline/{safe_title}/thumb.webp" if (dest / 'thumb.webp').exists() else None,
+                }
+        except Exception:
+            logger.exception("Failed to create thumbnails for %s", safe_title)
+
+        resp = {"title": safe_title, "files": file_urls, "path": f"/offline/{safe_title}/", "thumbs": thumbs}
+        # Backwards-compat: include thumb if default exists
+        if thumbs.get('default'):
+            resp['thumb'] = thumbs['default']
         return resp
     except HTTPException:
         raise
