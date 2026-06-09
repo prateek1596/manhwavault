@@ -11,6 +11,8 @@ export default function DownloadsScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ total: 0, done: 0, current: '' });
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
@@ -108,6 +110,42 @@ export default function DownloadsScreen({ navigation }) {
     ]);
   };
 
+  const bulkDelete = async () => {
+    setBulkBusy(true);
+    setBulkProgress({ total: items.length, done: 0, current: '' });
+    const failures = [];
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        setBulkProgress({ total: items.length, done: i, current: it.id });
+        try {
+          const [serverResult, localResult] = await Promise.allSettled([
+            deleteDownloadedChapter({ title: it.id }),
+            FileSystem.deleteAsync(BASE + it.id, { idempotent: true }),
+          ]);
+
+          if (localResult.status === 'rejected') {
+            failures.push({ id: it.id, error: String(localResult.reason) });
+          }
+          if (serverResult.status === 'rejected') {
+            failures.push({ id: it.id, error: `server:${String(serverResult.reason)}` });
+          }
+        } catch (e) {
+          failures.push({ id: it.id, error: String(e) });
+        }
+      }
+    } finally {
+      setBulkProgress((p) => ({ ...p, done: p.total }));
+      setBulkBusy(false);
+      await refresh();
+      if (failures.length) {
+        Alert.alert('Clear all completed', `Some items failed to delete (${failures.length}).`);
+      } else {
+        Alert.alert('Clear all completed', 'All downloads removed from device.');
+      }
+    }
+  };
+
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { padding: 16 },
@@ -171,9 +209,28 @@ export default function DownloadsScreen({ navigation }) {
         <Text style={styles.subtitle}>Chapters you've saved to device for offline reading.</Text>
       </View>
 
-      <Text style={styles.summary}>
-        {items.length} download{items.length === 1 ? '' : 's'} • {formatBytes(totalBytes)} total
-      </Text>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={styles.summary}>
+          {items.length} download{items.length === 1 ? '' : 's'} • {formatBytes(totalBytes)} total
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            if (items.length === 0) return Alert.alert('Clear downloads', 'No downloads to delete.');
+            Alert.alert('Clear all downloads', `Delete all ${items.length} download${items.length === 1 ? '' : 's'} from device?`, [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: () => bulkDelete() },
+            ]);
+          }}
+          style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+          disabled={bulkBusy || !!busyId}
+        >
+          {bulkBusy ? (
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+          ) : (
+            <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Clear all</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 40 }}>
         {loading ? (
