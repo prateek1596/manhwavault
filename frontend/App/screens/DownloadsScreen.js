@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Swipeable } from 'react-native-gesture-handler';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { useTheme } from '@theme/ThemeContext';
@@ -13,6 +14,7 @@ export default function DownloadsScreen({ navigation }) {
   const [busyId, setBusyId] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ total: 0, done: 0, current: '' });
+  const [downloadProgressMap, setDownloadProgressMap] = useState({});
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
@@ -250,7 +252,12 @@ export default function DownloadsScreen({ navigation }) {
           <Text style={{ color: colors.textSecondary }}>No downloads found.</Text>
         ) : (
           items.map((it) => (
-            <View key={it.id} style={styles.item}>
+            <Swipeable key={it.id} renderRightActions={() => (
+              <TouchableOpacity onPress={() => deleteItem(it)} style={{ backgroundColor: '#ff4444', justifyContent: 'center', paddingHorizontal: 18, borderRadius: 14, marginBottom: 12 }}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Delete</Text>
+              </TouchableOpacity>
+            )}>
+              <View style={styles.item}>
               <View style={styles.itemLeft}>
                 {it.thumbnail ? (
                   <Image source={{ uri: it.thumbnail }} style={styles.cover} resizeMode="cover" />
@@ -259,6 +266,12 @@ export default function DownloadsScreen({ navigation }) {
                     <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 10 }}>{it.count}</Text>
                   </View>
                 )}
+                {/* per-item download progress bar (if active) */}
+                {downloadProgressMap[it.id] ? (
+                  <View style={{ position: 'absolute', left: 0, right: 0, bottom: -6, height: 4, backgroundColor: '#222', borderRadius: 4 }}>
+                    <View style={{ width: `${Math.round((downloadProgressMap[it.id].percent || 0) * 100)}%`, height: '100%', backgroundColor: '#30a14e', borderRadius: 4 }} />
+                  </View>
+                ) : null}
                 <View style={styles.itemBody}>
                   <Text style={styles.itemTitle} numberOfLines={1}>{it.name}</Text>
                   <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}{it.lastModified ? ` • ${new Date(it.lastModified * 1000).toLocaleDateString()}` : ''}</Text>
