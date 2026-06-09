@@ -212,6 +212,14 @@ export default function DownloadsScreen({ navigation }) {
         <Text style={styles.subtitle}>Chapters you've saved to device for offline reading.</Text>
       </View>
 
+      {bulkBusy && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <View style={{ backgroundColor: '#ffefef', padding: 8, borderRadius: 8 }}>
+            <Text style={{ color: '#8a1f1f' }}>Clearing {bulkProgress.done}/{bulkProgress.total} — {bulkProgress.current}</Text>
+          </View>
+        </View>
+      )}
+
       <View style={{ paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={styles.summary}>
           {items.length} download{items.length === 1 ? '' : 's'} • {formatBytes(totalBytes)} total
