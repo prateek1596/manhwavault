@@ -70,7 +70,7 @@ export default function DownloadsScreen({ navigation }) {
   const openItem = async (item) => {
     setBusyId(`open:${item.id}`);
     const uris = item.files.map((f) => f.uri);
-    navigation.navigate('Reader', { title: item.name, localFiles: uris });
+    navigation.navigate('OfflineViewer', { title: item.name, localFiles: uris });
     setBusyId(null);
   };
 

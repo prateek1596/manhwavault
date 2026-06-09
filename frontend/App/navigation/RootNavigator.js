@@ -12,6 +12,7 @@ import LibraryScreen from '@screens/LibraryScreen';
 import SettingsScreen from '@screens/SettingsScreen';
 import MangaDetailScreen from '@screens/MangaDetailScreen';
 import ReaderScreen from '@screens/ReaderScreen';
+import OfflineViewer from '@screens/OfflineViewer';
 import DownloadsScreen from '@screens/DownloadsScreen';
 
 const Stack = createNativeStackNavigator();
@@ -50,6 +51,13 @@ function HomeStackNavigator() {
         options={({ route }) => ({
           title: route.params?.title || 'Manga',
         })}
+      />
+      <Stack.Screen
+        name="OfflineViewer"
+        component={OfflineViewer}
+        options={{
+          headerShown: false,
+        }}
       />
       <Stack.Screen
         name="Downloads"
