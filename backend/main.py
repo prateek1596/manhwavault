@@ -13,6 +13,8 @@ from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import httpx
+import io
+from PIL import Image
 from core import http_client, cache, scheduler
 from core.auth import require_api_key
 from prometheus_client import Counter as PromCounter, generate_latest, CONTENT_TYPE_LATEST
@@ -1190,7 +1192,24 @@ async def download_chapter(url: str, source: str, title: str = "chapter"):
         if not file_urls:
             raise HTTPException(500, "Failed to download any images")
 
-        return {"title": safe_title, "files": file_urls, "path": f"/offline/{safe_title}/"}
+        # Attempt to generate a small thumbnail from the first successfully downloaded image
+        thumb_url = None
+        try:
+            first_file = dest / Path(file_urls[0]).name
+            if first_file.exists():
+                with Image.open(first_file) as im:
+                    im = im.convert('RGB')
+                    im.thumbnail((320, 320))
+                    thumb_path = dest / 'thumb.jpg'
+                    im.save(thumb_path, format='JPEG', quality=80)
+                    thumb_url = f"/offline/{safe_title}/thumb.jpg"
+        except Exception:
+            logger.exception("Failed to create thumbnail for %s", safe_title)
+
+        resp = {"title": safe_title, "files": file_urls, "path": f"/offline/{safe_title}/"}
+        if thumb_url:
+            resp["thumb"] = thumb_url
+        return resp
     except HTTPException:
         raise
     except Exception as e:

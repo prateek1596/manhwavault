@@ -237,8 +237,24 @@ export async function downloadAndSaveChapter(params = {}) {
     }
   }
 
+  // If server provided a thumbnail URL, try to save it locally as thumb.jpg
+  if (serverRes.thumb) {
+    try {
+      const thumbRemote = serverRes.thumb.startsWith('http') ? serverRes.thumb : `${API_BASE_URL}${serverRes.thumb}`;
+      const thumbLocal = `${safeDir}thumb.jpg`;
+      await FileSystem.downloadAsync(thumbRemote, thumbLocal);
+      // add thumb to front of saved list for convenience
+      saved.unshift(thumbLocal);
+    } catch (e) {
+      // ignore thumb failures
+      console.log('[downloadAndSaveChapter] failed to download thumb', e?.message || e);
+    }
+  }
+
   return { server: serverRes, localFiles: saved };
 }
+
+  // unreachable
 
 export async function getSuggestionTelemetry() {
   const response = await api.get('/telemetry/suggestions');
