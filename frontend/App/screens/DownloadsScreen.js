@@ -41,13 +41,16 @@ export default function DownloadsScreen({ navigation }) {
           let total = 0;
           const fileInfos = await Promise.all(
             files.map(async (f) => {
-              const info = await FileSystem.getInfoAsync(dirPath + f);
-              total += info.size || 0;
-              return { name: f, uri: dirPath + f, size: info.size || 0 };
+                  const info = await FileSystem.getInfoAsync(dirPath + f);
+                  total += info.size || 0;
+                  return { name: f, uri: dirPath + f, size: info.size || 0, modificationTime: info.modificationTime };
             })
           );
-          const thumbnail = fileInfos[0]?.uri || null;
-          return { id: d, name: d, count: fileInfos.length, size: total, files: fileInfos, thumbnail };
+          // Prefer explicit thumb.jpg if present
+          const thumbEntry = fileInfos.find((x) => x.name.toLowerCase() === 'thumb.jpg' || x.name.toLowerCase() === 'thumb.jpeg');
+          const thumbnail = thumbEntry ? thumbEntry.uri : fileInfos[0]?.uri || null;
+          const lastMod = fileInfos.reduce((m, f) => (f.modificationTime && (!m || f.modificationTime > m) ? f.modificationTime : m), null);
+          return { id: d, name: d, count: fileInfos.length, size: total, files: fileInfos, thumbnail, lastModified: lastMod };
         })
       );
       setItems(data);
@@ -250,7 +253,7 @@ export default function DownloadsScreen({ navigation }) {
                 )}
                 <View style={styles.itemBody}>
                   <Text style={styles.itemTitle} numberOfLines={1}>{it.name}</Text>
-                  <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}</Text>
+                  <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}{it.lastModified ? ` • ${new Date(it.lastModified * 1000).toLocaleDateString()}` : ''}</Text>
                 </View>
               </View>
               <View style={styles.actions}>
