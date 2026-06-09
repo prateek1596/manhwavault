@@ -209,7 +209,7 @@ export async function deleteDownloadedChapter(params = {}) {
   return response.data || {};
 }
 
-export async function downloadAndSaveChapter(params = {}) {
+export async function downloadAndSaveChapter(params = {}, onProgress = null) {
   // Call server to prepare and return file URLs
   const serverRes = await downloadChapter(params);
   const files = serverRes.files || [];
@@ -225,28 +225,63 @@ export async function downloadAndSaveChapter(params = {}) {
     // ignore if already exists
   }
 
-  for (const f of files) {
+  // Helper to download with progress using DownloadResumable
+  async function downloadWithProgress(remote, localPath, index) {
+    const callback = (downloadProgress) => {
+      if (onProgress) {
+        const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+        const percent = totalBytesExpectedToWrite ? totalBytesWritten / totalBytesExpectedToWrite : null;
+        try {
+          onProgress({ index, loaded: totalBytesWritten, total: totalBytesExpectedToWrite, percent, filename: localPath.split('/').pop() });
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+
+    try {
+      const uri = await FileSystem.createDownloadResumable(remote, localPath, {}, callback).downloadAsync();
+      return uri.uri || uri;
+    } catch (err) {
+      // fallback to downloadAsync
+      try {
+        const r = await FileSystem.downloadAsync(remote, localPath);
+        return r.uri;
+      } catch (e) {
+        throw e;
+      }
+    }
+  }
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
     const remote = f && f.startsWith('http') ? f : `${API_BASE_URL}${f}`;
     const filename = remote.split('/').pop().split('?')[0] || `img_${Date.now()}.jpg`;
     const localPath = `${safeDir}${filename}`;
     try {
-      const res = await FileSystem.downloadAsync(remote, localPath);
-      saved.push(res.uri);
+      const uri = await downloadWithProgress(remote, localPath, i);
+      saved.push(uri);
     } catch (err) {
       console.log('[downloadAndSaveChapter] failed to download', remote, err.message || err);
     }
   }
 
-  // If server provided a thumbnail URL, try to save it locally as thumb.jpg
-  if (serverRes.thumb) {
+  // If server provided thumbs, try to save preferred thumb locally as thumb.jpg
+  const thumbs = serverRes.thumbs || {};
+  const preferred = thumbs.small || thumbs.default || thumbs.webp || thumbs.large || serverRes.thumb;
+  if (preferred) {
     try {
-      const thumbRemote = serverRes.thumb.startsWith('http') ? serverRes.thumb : `${API_BASE_URL}${serverRes.thumb}`;
+      const thumbRemote = preferred.startsWith('http') ? preferred : `${API_BASE_URL}${preferred}`;
       const thumbLocal = `${safeDir}thumb.jpg`;
-      await FileSystem.downloadAsync(thumbRemote, thumbLocal);
+      try {
+        await downloadWithProgress(thumbRemote, thumbLocal, -1);
+      } catch (e) {
+        // fallback to simple download
+        await FileSystem.downloadAsync(thumbRemote, thumbLocal);
+      }
       // add thumb to front of saved list for convenience
       saved.unshift(thumbLocal);
     } catch (e) {
-      // ignore thumb failures
       console.log('[downloadAndSaveChapter] failed to download thumb', e?.message || e);
     }
   }
