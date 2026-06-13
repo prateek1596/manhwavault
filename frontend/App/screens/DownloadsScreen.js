@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Swipeable } from 'react-native-gesture-handler';
-import { subscribeDownloadProgress } from '@services/api';
-import { Swipeable } from 'react-native-gesture-handler';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import * as FileSystem from 'expo-file-system';
 import { useTheme } from '@theme/ThemeContext';
-import { deleteDownloadedChapter } from '@services/api';
+import { deleteDownloadedChapter, subscribeDownloadProgress, cancelDownload } from '@services/api';
 
 const BASE = FileSystem.documentDirectory + 'manhwavault/offline/';
 
@@ -17,23 +15,20 @@ export default function DownloadsScreen({ navigation }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ total: 0, done: 0, current: '' });
   const [downloadProgressMap, setDownloadProgressMap] = useState({});
-  const [downloadProgressMap, setDownloadProgressMap] = useState({});
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
       refresh();
     });
 
-    // subscribe to global download progress
     const unsubProgress = subscribeDownloadProgress((p) => {
-      // p: { title, index, loaded, total, percent, filename }
       setDownloadProgressMap((m) => ({ ...m, [p.title]: p }));
     });
 
     refresh();
     return () => {
-      unsub();
-      unsubProgress();
+      try { unsub(); } catch (e) {}
+      try { unsubProgress(); } catch (e) {}
     };
   }, [navigation]);
 
@@ -55,86 +50,74 @@ export default function DownloadsScreen({ navigation }) {
           let total = 0;
           const fileInfos = await Promise.all(
             files.map(async (f) => {
-                  const info = await FileSystem.getInfoAsync(dirPath + f);
-                  total += info.size || 0;
-                  return { name: f, uri: dirPath + f, size: info.size || 0, modificationTime: info.modificationTime };
+              const info = await FileSystem.getInfoAsync(dirPath + f);
+              total += info.size || 0;
+              return { name: f, uri: dirPath + f, size: info.size || 0, modificationTime: info.modificationTime };
             })
           );
-          // Prefer explicit thumb.jpg if present
-          const thumbEntry = fileInfos.find((x) => x.name.toLowerCase() === 'thumb.jpg' || x.name.toLowerCase() === 'thumb.jpeg');
+          const thumbEntry = fileInfos.find((x) => x.name.toLowerCase() === 'thumb.jpg' || x.name.toLowerCase() === 'thumb_small.jpg' || x.name.toLowerCase() === 'thumb.webp');
           const thumbnail = thumbEntry ? thumbEntry.uri : fileInfos[0]?.uri || null;
           const lastMod = fileInfos.reduce((m, f) => (f.modificationTime && (!m || f.modificationTime > m) ? f.modificationTime : m), null);
           return { id: d, name: d, count: fileInfos.length, size: total, files: fileInfos, thumbnail, lastModified: lastMod };
         })
       );
-        ) : (
-          items.map((it) => {
-            const prog = downloadProgressMap[it.id];
-            const progressPercent = prog && prog.percent ? Math.max(0, Math.min(1, prog.percent)) : null;
+      setItems(data);
+    } catch (e) {
+      console.error('Failed to list downloads', e);
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-            const rightActions = () => (
-              <TouchableOpacity
-                onPress={() => deleteItem(it)}
-                style={{ backgroundColor: '#ff4444', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, borderRadius: 12, marginVertical: 8 }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800' }}>Delete</Text>
-              </TouchableOpacity>
-            );
+  const totalBytes = useMemo(() => items.reduce((sum, item) => sum + (item.size || 0), 0), [items]);
 
-            return (
-              <Swipeable key={it.id} renderRightActions={rightActions} overshootRight={false}>
-                <View style={styles.item}>
-                  <View style={styles.itemLeft}>
-                    {it.thumbnail ? (
-                      <Image source={{ uri: it.thumbnail }} style={styles.cover} resizeMode="cover" />
-                    ) : (
-                      <View style={styles.coverFallback}>
-                        <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 10 }}>{it.count}</Text>
-                      </View>
-                    )}
-                    <View style={styles.itemBody}>
-                      <Text style={styles.itemTitle} numberOfLines={1}>{it.name}</Text>
-                      <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}{it.lastModified ? ` • ${new Date(it.lastModified * 1000).toLocaleDateString()}` : ''}</Text>
-                      {progressPercent !== null && (
-                        <View style={{ marginTop: 8 }}>
-                          <View style={{ height: 6, backgroundColor: '#eee', borderRadius: 6, overflow: 'hidden' }}>
-                            <View style={{ height: 6, backgroundColor: colors.primary, width: `${Math.round(progressPercent * 100)}%` }} />
-                          </View>
-                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>{Math.round(progressPercent * 100)}%</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.actions}>
-                    <TouchableOpacity
-                      onPress={() => openItem(it)}
-                      style={[styles.btn, { backgroundColor: colors.primary, opacity: busyId ? 0.7 : 1 }]}
-                      disabled={!!busyId}
-                    >
-                      {busyId === `open:${it.id}` ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>Open</Text>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => deleteItem(it)}
-                      style={[styles.btn, { borderWidth: 1, borderColor: colors.border, minWidth: 76, alignItems: 'center', opacity: busyId ? 0.7 : 1 }]}
-                      disabled={!!busyId}
-                    >
-                      {busyId === `delete:${it.id}` ? (
-                        <ActivityIndicator size="small" color={colors.textSecondary} />
-                      ) : (
-                        <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Delete</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                  {busyId === `delete:${it.id}` ? <View style={styles.busyOverlay} /> : null}
-                </View>
-              </Swipeable>
-            );
-          })
-        )}
+  const formatBytes = (bytes) => {
+    const value = Number(bytes || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  };
+
+  const openItem = async (item) => {
+    setBusyId(`open:${item.id}`);
+    const uris = item.files.map((f) => f.uri);
+    navigation.navigate('OfflineViewer', { title: item.name, localFiles: uris });
+    setBusyId(null);
+  };
+
+  const cancelItemDownload = async (item) => {
+    try {
+      await cancelDownload(item.id);
+      setDownloadProgressMap((m) => {
+        const copy = { ...m };
+        delete copy[item.id];
+        return copy;
+      });
+    } catch (e) {
+      console.error('Cancel failed', e);
+    }
+  };
+
+  const deleteItem = (item) => {
+    Alert.alert('Delete', `Delete "${item.name}" from device?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setBusyId(`delete:${item.id}`);
+          try {
+            const [serverResult, localResult] = await Promise.allSettled([
+              deleteDownloadedChapter({ title: item.id }),
+              FileSystem.deleteAsync(BASE + item.id, { idempotent: true }),
+            ]);
+
+            if (localResult.status === 'rejected') {
+              throw localResult.reason;
+            }
+
             if (serverResult.status === 'rejected') {
               Alert.alert('Deleted locally', 'The device copy was removed, but the server copy may still remain.');
             }
@@ -287,59 +270,77 @@ export default function DownloadsScreen({ navigation }) {
         ) : items.length === 0 ? (
           <Text style={{ color: colors.textSecondary }}>No downloads found.</Text>
         ) : (
-          items.map((it) => (
-            <Swipeable key={it.id} renderRightActions={() => (
-              <TouchableOpacity onPress={() => deleteItem(it)} style={{ backgroundColor: '#ff4444', justifyContent: 'center', paddingHorizontal: 18, borderRadius: 14, marginBottom: 12 }}>
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Delete</Text>
-              </TouchableOpacity>
-            )}>
-              <View style={styles.item}>
-              <View style={styles.itemLeft}>
-                {it.thumbnail ? (
-                  <Image source={{ uri: it.thumbnail }} style={styles.cover} resizeMode="cover" />
-                ) : (
-                  <View style={styles.coverFallback}>
-                    <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 10 }}>{it.count}</Text>
+          items.map((it) => {
+            const prog = downloadProgressMap[it.id];
+            const progressPercent = prog && prog.percent ? Math.max(0, Math.min(1, prog.percent)) : null;
+
+            return (
+              <Swipeable key={it.id} renderRightActions={() => (
+                <TouchableOpacity onPress={() => deleteItem(it)} style={{ backgroundColor: '#ff4444', justifyContent: 'center', paddingHorizontal: 18, borderRadius: 14, marginBottom: 12 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Delete</Text>
+                </TouchableOpacity>
+              )}>
+                <View style={styles.item}>
+                  <View style={styles.itemLeft}>
+                    {it.thumbnail ? (
+                      <Image source={{ uri: it.thumbnail }} style={styles.cover} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.coverFallback}>
+                        <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 10 }}>{it.count}</Text>
+                      </View>
+                    )}
+                    <View style={styles.itemBody}>
+                      <Text style={styles.itemTitle} numberOfLines={1}>{it.name}</Text>
+                      <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}{it.lastModified ? ` • ${new Date(it.lastModified * 1000).toLocaleDateString()}` : ''}</Text>
+                      {progressPercent !== null && (
+                        <View style={{ marginTop: 8 }}>
+                          <View style={{ height: 6, backgroundColor: '#eee', borderRadius: 6, overflow: 'hidden' }}>
+                            <View style={{ height: 6, backgroundColor: colors.primary, width: `${Math.round(progressPercent * 100)}%` }} />
+                          </View>
+                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>{Math.round(progressPercent * 100)}%</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                )}
-                {/* per-item download progress bar (if active) */}
-                {downloadProgressMap[it.id] ? (
-                  <View style={{ position: 'absolute', left: 0, right: 0, bottom: -6, height: 4, backgroundColor: '#222', borderRadius: 4 }}>
-                    <View style={{ width: `${Math.round((downloadProgressMap[it.id].percent || 0) * 100)}%`, height: '100%', backgroundColor: '#30a14e', borderRadius: 4 }} />
+                  <View style={styles.actions}>
+                    <TouchableOpacity
+                      onPress={() => openItem(it)}
+                      style={[styles.btn, { backgroundColor: colors.primary, opacity: busyId ? 0.7 : 1 }]}
+                      disabled={!!busyId}
+                    >
+                      {busyId === `open:${it.id}` ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>Open</Text>
+                      )}
+                    </TouchableOpacity>
+                    {progressPercent !== null && progressPercent < 1 ? (
+                      <TouchableOpacity
+                        onPress={() => cancelItemDownload(it)}
+                        style={[styles.btn, { borderWidth: 1, borderColor: colors.border, minWidth: 76, alignItems: 'center', opacity: busyId ? 0.7 : 1 }]}
+                        disabled={!!busyId}
+                      >
+                        <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Cancel</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => deleteItem(it)}
+                        style={[styles.btn, { borderWidth: 1, borderColor: colors.border, minWidth: 76, alignItems: 'center', opacity: busyId ? 0.7 : 1 }]}
+                        disabled={!!busyId}
+                      >
+                        {busyId === `delete:${it.id}` ? (
+                          <ActivityIndicator size="small" color={colors.textSecondary} />
+                        ) : (
+                          <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Delete</Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
                   </View>
-                ) : null}
-                <View style={styles.itemBody}>
-                  <Text style={styles.itemTitle} numberOfLines={1}>{it.name}</Text>
-                  <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}{it.lastModified ? ` • ${new Date(it.lastModified * 1000).toLocaleDateString()}` : ''}</Text>
+                  {busyId === `delete:${it.id}` ? <View style={styles.busyOverlay} /> : null}
                 </View>
-              </View>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  onPress={() => openItem(it)}
-                  style={[styles.btn, { backgroundColor: colors.primary, opacity: busyId ? 0.7 : 1 }]}
-                  disabled={!!busyId}
-                >
-                  {busyId === `open:${it.id}` ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>Open</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => deleteItem(it)}
-                  style={[styles.btn, { borderWidth: 1, borderColor: colors.border, minWidth: 76, alignItems: 'center', opacity: busyId ? 0.7 : 1 }]}
-                  disabled={!!busyId}
-                >
-                  {busyId === `delete:${it.id}` ? (
-                    <ActivityIndicator size="small" color={colors.textSecondary} />
-                  ) : (
-                    <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Delete</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-              {busyId === `delete:${it.id}` ? <View style={styles.busyOverlay} /> : null}
-            </View>
-          ))
+              </Swipeable>
+            );
+          })
         )}
       </ScrollView>
     </View>

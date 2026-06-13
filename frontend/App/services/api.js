@@ -138,6 +138,29 @@ function _emitDownloadProgress(payload) {
   }
 }
 
+// Active DownloadResumable handlers so callers can cancel ongoing downloads.
+const _activeDownloads = new Map(); // key -> DownloadResumable
+export async function cancelDownload(title) {
+  // cancel all downloads matching this chapter title
+  const keys = Array.from(_activeDownloads.keys()).filter((k) => k.startsWith(`${title}:`));
+  for (const k of keys) {
+    try {
+      const resumable = _activeDownloads.get(k);
+      if (resumable && typeof resumable.pauseAsync === 'function') {
+        // for older SDKs
+        await resumable.pauseAsync();
+      }
+      if (resumable && typeof resumable.cancelAsync === 'function') {
+        await resumable.cancelAsync();
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      _activeDownloads.delete(k);
+    }
+  }
+}
+
 export async function getSearchSuggestions(params = {}) {
   const requestParams = {
     source: params.source || 'all',
@@ -257,16 +280,40 @@ export async function downloadAndSaveChapter(params = {}, onProgress = null) {
       }
     };
 
-    try {
-      const uri = await FileSystem.createDownloadResumable(remote, localPath, {}, callback).downloadAsync();
-      return uri.uri || uri;
-    } catch (err) {
-      // fallback to downloadAsync
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError = null;
+    while (attempt < maxRetries) {
+      attempt += 1;
       try {
-        const r = await FileSystem.downloadAsync(remote, localPath);
-        return r.uri;
-      } catch (e) {
-        throw e;
+        const resumable = FileSystem.createDownloadResumable(remote, localPath, {}, callback);
+        // store by title:index so cancelDownload can find it
+        const key = `${title}:${index}`;
+        _activeDownloads.set(key, resumable);
+        const uri = await resumable.downloadAsync();
+        _activeDownloads.delete(key);
+        return uri.uri || uri;
+      } catch (err) {
+        lastError = err;
+        // remove any stored resumable for this attempt
+        try {
+          _activeDownloads.delete(`${title}:${index}`);
+        } catch (e) {
+          // ignore
+        }
+        // exponential backoff before retrying
+        if (attempt < maxRetries) {
+          const waitMs = 250 * Math.pow(2, attempt - 1);
+          await new Promise((res) => setTimeout(res, waitMs));
+          continue;
+        }
+        // final fallback: try simple download once
+        try {
+          const r = await FileSystem.downloadAsync(remote, localPath);
+          return r.uri;
+        } catch (e) {
+          throw lastError || e;
+        }
       }
     }
   }
