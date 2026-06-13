@@ -22,6 +22,18 @@ export default function DownloadsScreen({ navigation }) {
     });
 
     const unsubProgress = subscribeDownloadProgress((p) => {
+      if (!p || !p.title) return;
+      if (p.canceled) {
+        try {
+          Alert.alert('Download canceled', `Download for '${p.title}' was canceled.`);
+        } catch (e) {}
+        setDownloadProgressMap((m) => {
+          const copy = { ...m };
+          delete copy[p.title];
+          return copy;
+        });
+        return;
+      }
       setDownloadProgressMap((m) => ({ ...m, [p.title]: p }));
     });
 
@@ -298,6 +310,9 @@ export default function DownloadsScreen({ navigation }) {
                             <View style={{ height: 6, backgroundColor: colors.primary, width: `${Math.round(progressPercent * 100)}%` }} />
                           </View>
                           <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>{Math.round(progressPercent * 100)}%</Text>
+                          {prog && prog.attempt ? (
+                            <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>Attempt {prog.attempt}</Text>
+                          ) : null}
                         </View>
                       )}
                     </View>

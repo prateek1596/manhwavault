@@ -159,6 +159,8 @@ export async function cancelDownload(title) {
       _activeDownloads.delete(k);
     }
   }
+  // emit cancellation event for UI
+  try { _emitDownloadProgress({ title, canceled: true }); } catch (e) {}
 }
 
 export async function getSearchSuggestions(params = {}) {
@@ -271,7 +273,7 @@ export async function downloadAndSaveChapter(params = {}, onProgress = null) {
         const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
         const percent = totalBytesExpectedToWrite ? totalBytesWritten / totalBytesExpectedToWrite : null;
         try {
-          const payload = { title, index, loaded: totalBytesWritten, total: totalBytesExpectedToWrite, percent, filename: localPath.split('/').pop() };
+          const payload = { title, index, loaded: totalBytesWritten, total: totalBytesExpectedToWrite, percent, filename: localPath.split('/').pop(), attempt };
           onProgress(payload);
           _emitDownloadProgress(payload);
         } catch (e) {
@@ -301,6 +303,8 @@ export async function downloadAndSaveChapter(params = {}, onProgress = null) {
         } catch (e) {
           // ignore
         }
+        // emit attempt/failure so UI can show retry count
+        try { _emitDownloadProgress({ title, index, attempt, error: true }); } catch (e) {}
         // exponential backoff before retrying
         if (attempt < maxRetries) {
           const waitMs = 250 * Math.pow(2, attempt - 1);
