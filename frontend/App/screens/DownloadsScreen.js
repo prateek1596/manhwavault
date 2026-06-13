@@ -15,6 +15,14 @@ export default function DownloadsScreen({ navigation }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ total: 0, done: 0, current: '' });
   const [downloadProgressMap, setDownloadProgressMap] = useState({});
+  const [toast, setToast] = useState(null);
+
+  function showToast(message, ms = 2500) {
+    setToast(message);
+    try {
+      setTimeout(() => setToast(null), ms);
+    } catch (e) {}
+  }
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
@@ -25,7 +33,8 @@ export default function DownloadsScreen({ navigation }) {
       if (!p || !p.title) return;
       if (p.canceled) {
         try {
-          Alert.alert('Download canceled', `Download for '${p.title}' was canceled.`);
+          // non-blocking toast instead of Alert
+          showToast(`Download for '${p.title}' canceled`);
         } catch (e) {}
         setDownloadProgressMap((m) => {
           const copy = { ...m };
@@ -33,6 +42,10 @@ export default function DownloadsScreen({ navigation }) {
           return copy;
         });
         return;
+      }
+      // show retry toasts for retry attempts (>1)
+      if (p.attempt && p.attempt > 1) {
+        try { showToast(`${p.title}: retry ${p.attempt}`); } catch (e) {}
       }
       setDownloadProgressMap((m) => ({ ...m, [p.title]: p }));
     });
@@ -358,6 +371,13 @@ export default function DownloadsScreen({ navigation }) {
           })
         )}
       </ScrollView>
+      {toast ? (
+        <View style={{ position: 'absolute', left: 16, right: 16, bottom: 24, alignItems: 'center' }} pointerEvents="box-none">
+          <View style={{ backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+            <Text style={{ color: '#fff', fontWeight: '600' }}>{toast}</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
