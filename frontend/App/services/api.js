@@ -122,6 +122,22 @@ export const api = axios.create({
   timeout: 25000,
 });
 
+// Simple in-memory download progress emitter for UI components to subscribe to.
+const _downloadProgressSubscribers = new Set();
+export function subscribeDownloadProgress(cb) {
+  _downloadProgressSubscribers.add(cb);
+  return () => _downloadProgressSubscribers.delete(cb);
+}
+function _emitDownloadProgress(payload) {
+  for (const cb of _downloadProgressSubscribers) {
+    try {
+      cb(payload);
+    } catch (e) {
+      // ignore subscriber errors
+    }
+  }
+}
+
 export async function getSearchSuggestions(params = {}) {
   const requestParams = {
     source: params.source || 'all',
@@ -226,13 +242,15 @@ export async function downloadAndSaveChapter(params = {}, onProgress = null) {
   }
 
   // Helper to download with progress using DownloadResumable
-  async function downloadWithProgress(remote, localPath, index) {
+  async function downloadWithProgress(remote, localPath, index, title) {
     const callback = (downloadProgress) => {
       if (onProgress) {
         const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
         const percent = totalBytesExpectedToWrite ? totalBytesWritten / totalBytesExpectedToWrite : null;
         try {
-          onProgress({ index, loaded: totalBytesWritten, total: totalBytesExpectedToWrite, percent, filename: localPath.split('/').pop() });
+          const payload = { title, index, loaded: totalBytesWritten, total: totalBytesExpectedToWrite, percent, filename: localPath.split('/').pop() };
+          onProgress(payload);
+          _emitDownloadProgress(payload);
         } catch (e) {
           // ignore
         }
@@ -259,7 +277,7 @@ export async function downloadAndSaveChapter(params = {}, onProgress = null) {
     const filename = remote.split('/').pop().split('?')[0] || `img_${Date.now()}.jpg`;
     const localPath = `${safeDir}${filename}`;
     try {
-      const uri = await downloadWithProgress(remote, localPath, i);
+      const uri = await downloadWithProgress(remote, localPath, i, serverRes.title);
       saved.push(uri);
     } catch (err) {
       console.log('[downloadAndSaveChapter] failed to download', remote, err.message || err);

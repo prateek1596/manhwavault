@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Swipeable } from 'react-native-gesture-handler';
+import { subscribeDownloadProgress } from '@services/api';
+import { Swipeable } from 'react-native-gesture-handler';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { useTheme } from '@theme/ThemeContext';
@@ -15,14 +17,24 @@ export default function DownloadsScreen({ navigation }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ total: 0, done: 0, current: '' });
   const [downloadProgressMap, setDownloadProgressMap] = useState({});
+  const [downloadProgressMap, setDownloadProgressMap] = useState({});
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
       refresh();
     });
 
+    // subscribe to global download progress
+    const unsubProgress = subscribeDownloadProgress((p) => {
+      // p: { title, index, loaded, total, percent, filename }
+      setDownloadProgressMap((m) => ({ ...m, [p.title]: p }));
+    });
+
     refresh();
-    return unsub;
+    return () => {
+      unsub();
+      unsubProgress();
+    };
   }, [navigation]);
 
   async function refresh() {
@@ -55,50 +67,74 @@ export default function DownloadsScreen({ navigation }) {
           return { id: d, name: d, count: fileInfos.length, size: total, files: fileInfos, thumbnail, lastModified: lastMod };
         })
       );
-      setItems(data);
-    } catch (e) {
-      console.error('Failed to list downloads', e);
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+        ) : (
+          items.map((it) => {
+            const prog = downloadProgressMap[it.id];
+            const progressPercent = prog && prog.percent ? Math.max(0, Math.min(1, prog.percent)) : null;
 
-  const totalBytes = useMemo(() => items.reduce((sum, item) => sum + (item.size || 0), 0), [items]);
+            const rightActions = () => (
+              <TouchableOpacity
+                onPress={() => deleteItem(it)}
+                style={{ backgroundColor: '#ff4444', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, borderRadius: 12, marginVertical: 8 }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '800' }}>Delete</Text>
+              </TouchableOpacity>
+            );
 
-  const formatBytes = (bytes) => {
-    const value = Number(bytes || 0);
-    if (value < 1024) return `${value} B`;
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-    if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-
-  const openItem = async (item) => {
-    setBusyId(`open:${item.id}`);
-    const uris = item.files.map((f) => f.uri);
-    navigation.navigate('OfflineViewer', { title: item.name, localFiles: uris });
-    setBusyId(null);
-  };
-
-  const deleteItem = (item) => {
-    Alert.alert('Delete', `Delete "${item.name}" from device?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setBusyId(`delete:${item.id}`);
-          try {
-            const [serverResult, localResult] = await Promise.allSettled([
-              deleteDownloadedChapter({ title: item.id }),
-              FileSystem.deleteAsync(BASE + item.id, { idempotent: true }),
-            ]);
-
-            if (localResult.status === 'rejected') {
-              throw localResult.reason;
-            }
-
+            return (
+              <Swipeable key={it.id} renderRightActions={rightActions} overshootRight={false}>
+                <View style={styles.item}>
+                  <View style={styles.itemLeft}>
+                    {it.thumbnail ? (
+                      <Image source={{ uri: it.thumbnail }} style={styles.cover} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.coverFallback}>
+                        <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 10 }}>{it.count}</Text>
+                      </View>
+                    )}
+                    <View style={styles.itemBody}>
+                      <Text style={styles.itemTitle} numberOfLines={1}>{it.name}</Text>
+                      <Text style={styles.itemMeta}>{it.count} files • {formatBytes(it.size)}{it.lastModified ? ` • ${new Date(it.lastModified * 1000).toLocaleDateString()}` : ''}</Text>
+                      {progressPercent !== null && (
+                        <View style={{ marginTop: 8 }}>
+                          <View style={{ height: 6, backgroundColor: '#eee', borderRadius: 6, overflow: 'hidden' }}>
+                            <View style={{ height: 6, backgroundColor: colors.primary, width: `${Math.round(progressPercent * 100)}%` }} />
+                          </View>
+                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>{Math.round(progressPercent * 100)}%</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.actions}>
+                    <TouchableOpacity
+                      onPress={() => openItem(it)}
+                      style={[styles.btn, { backgroundColor: colors.primary, opacity: busyId ? 0.7 : 1 }]}
+                      disabled={!!busyId}
+                    >
+                      {busyId === `open:${it.id}` ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>Open</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => deleteItem(it)}
+                      style={[styles.btn, { borderWidth: 1, borderColor: colors.border, minWidth: 76, alignItems: 'center', opacity: busyId ? 0.7 : 1 }]}
+                      disabled={!!busyId}
+                    >
+                      {busyId === `delete:${it.id}` ? (
+                        <ActivityIndicator size="small" color={colors.textSecondary} />
+                      ) : (
+                        <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Delete</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {busyId === `delete:${it.id}` ? <View style={styles.busyOverlay} /> : null}
+                </View>
+              </Swipeable>
+            );
+          })
+        )}
             if (serverResult.status === 'rejected') {
               Alert.alert('Deleted locally', 'The device copy was removed, but the server copy may still remain.');
             }
