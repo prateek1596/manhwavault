@@ -7,6 +7,11 @@ import { deleteDownloadedChapter, subscribeDownloadProgress, cancelDownload } fr
 
 const BASE = FileSystem.documentDirectory + 'manhwavault/offline/';
 
+function isThumbnailFileName(name = '') {
+  const normalized = String(name).toLowerCase();
+  return normalized === 'thumb.jpg' || normalized === 'thumb_small.jpg' || normalized === 'thumb.webp';
+}
+
 export default function DownloadsScreen({ navigation }) {
   const { colors } = useTheme();
   const [items, setItems] = useState([]);
@@ -107,7 +112,8 @@ export default function DownloadsScreen({ navigation }) {
 
   const openItem = async (item) => {
     setBusyId(`open:${item.id}`);
-    const uris = item.files.map((f) => f.uri);
+    const pageFiles = item.files.filter((f) => !isThumbnailFileName(f.name));
+    const uris = (pageFiles.length > 0 ? pageFiles : item.files).map((f) => f.uri);
     navigation.navigate('OfflineViewer', { title: item.name, localFiles: uris });
     setBusyId(null);
   };
