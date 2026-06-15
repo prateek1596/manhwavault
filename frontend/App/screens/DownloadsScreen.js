@@ -175,7 +175,7 @@ export default function DownloadsScreen({ navigation }) {
     const uris = (pageFiles.length > 0 ? pageFiles : item.files).map(
       (f) => f.uri,
     );
-    navigation.navigate("OfflineViewer", {
+    navigation.navigate("Reader", {
       title: item.name,
       localFiles: uris,
     });

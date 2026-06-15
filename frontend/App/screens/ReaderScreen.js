@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -10,51 +10,57 @@ import {
   StatusBar,
   useWindowDimensions,
   Alert,
-} from 'react-native';
-import { useTheme } from '@theme/ThemeContext';
-import { api, getReadingProgress, setReadingProgress, downloadAndSaveChapter } from '@services/api';
-import useReaderSettings from '../hooks/useReaderSettings';
+} from "react-native";
+import { useTheme } from "@theme/ThemeContext";
+import {
+  api,
+  getReadingProgress,
+  setReadingProgress,
+  downloadAndSaveChapter,
+} from "@services/api";
+import useReaderSettings from "../hooks/useReaderSettings";
 
 export default function ReaderScreen({ route, navigation }) {
   const { colors } = useTheme();
-  const { title, sourceId, chapterUrl } = route.params;
+  const { title, sourceId, chapterUrl, localFiles = [] } = route.params || {};
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [dlProgress, setDlProgress] = useState(null);
   const [imageSizes, setImageSizes] = useState({});
   const scrollRef = useRef(null);
   const lastSavedPageRef = useRef(null);
   const saveTimerRef = useRef(null);
-  const {
-    settings,
-    loading: readerSettingsLoading,
-  } = useReaderSettings();
+  const { settings, loading: readerSettingsLoading } = useReaderSettings();
 
   const { width, height } = useWindowDimensions();
-  const isVerticalFlow = settings.readingMode === 'vertical';
+  const isVerticalFlow = settings.readingMode === "vertical";
+  const isOfflineMode = Array.isArray(localFiles) && localFiles.length > 0;
 
   useEffect(() => {
     const fetchImages = async () => {
-      // Support local files passed from Downloads screen
-      if (route.params?.localFiles && Array.isArray(route.params.localFiles)) {
-        const local = route.params.localFiles.map((uri, index) => ({ url: uri, page_num: index + 1 }));
+      // Support local files passed from Downloads screen.
+      if (isOfflineMode) {
+        const local = localFiles.map((uri, index) => ({
+          url: uri,
+          page_num: index + 1,
+        }));
         setImages(local);
         setLoading(false);
         return;
       }
 
       if (!sourceId || !chapterUrl) {
-        setError('Missing chapter info. Please reopen this chapter.');
+        setError("Missing chapter info. Please reopen this chapter.");
         setLoading(false);
         return;
       }
 
       setLoading(true);
-      setError('');
+      setError("");
 
       try {
-        const response = await api.get('/chapter/images', {
+        const response = await api.get("/chapter/images", {
           params: {
             url: chapterUrl,
             source: sourceId,
@@ -63,35 +69,38 @@ export default function ReaderScreen({ route, navigation }) {
 
         const payload = response.data || [];
         const chapterImages = payload.map((img, index) => {
-          if (typeof img === 'string') {
+          if (typeof img === "string") {
             return { url: img, page_num: index + 1 };
           }
           return img;
         });
         setImages(chapterImages);
       } catch (fetchError) {
-        console.error('Error fetching images:', fetchError);
-        setError('Failed to load chapter images.');
+        console.error("Error fetching images:", fetchError);
+        setError("Failed to load chapter images.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchImages();
-  }, [sourceId, chapterUrl, route.params]);
+  }, [chapterUrl, isOfflineMode, localFiles, sourceId]);
 
   useEffect(() => {
-    if (!images.length) {
+    if (!images.length || isOfflineMode) {
       return;
     }
 
     // Restore reading progress when images are available
     (async () => {
       try {
-        const saved = await getReadingProgress({ mangaId: sourceId, chapterUrl });
+        const saved = await getReadingProgress({
+          mangaId: sourceId,
+          chapterUrl,
+        });
         const pageNum = saved?.page_num || saved?.pageNum || 0;
         if (pageNum && scrollRef.current) {
-          const y = Math.max(0, pageNum * (height));
+          const y = Math.max(0, pageNum * height);
           // approximate jump to page position
           scrollRef.current.scrollTo({ y, animated: false });
           lastSavedPageRef.current = pageNum;
@@ -104,7 +113,7 @@ export default function ReaderScreen({ route, navigation }) {
     const urls = images.map((item) => item.url).filter(Boolean);
     const prefetchBatch = urls.map((url) => Image.prefetch(url));
     Promise.allSettled(prefetchBatch).catch(() => {});
-  }, [images]);
+  }, [images, chapterUrl, height, isOfflineMode, sourceId]);
 
   useEffect(() => {
     return () => {
@@ -122,11 +131,16 @@ export default function ReaderScreen({ route, navigation }) {
             new Promise((resolve) => {
               Image.getSize(
                 item.url,
-                (imgWidth, imgHeight) => resolve([item.url, { width: imgWidth, height: imgHeight }]),
-                () => resolve([item.url, { width: width, height: Math.round(width * 1.5) }])
+                (imgWidth, imgHeight) =>
+                  resolve([item.url, { width: imgWidth, height: imgHeight }]),
+                () =>
+                  resolve([
+                    item.url,
+                    { width: width, height: Math.round(width * 1.5) },
+                  ]),
               );
-            })
-        )
+            }),
+        ),
       );
 
       if (!cancelled) {
@@ -146,38 +160,38 @@ export default function ReaderScreen({ route, navigation }) {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#000',
+      backgroundColor: "#000",
     },
     loadingContainer: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: colors.background,
     },
     errorText: {
       color: colors.error,
       marginBottom: 12,
-      textAlign: 'center',
+      textAlign: "center",
       paddingHorizontal: 24,
     },
     pageContainer: {
-      width: '100%',
-      backgroundColor: '#000',
+      width: "100%",
+      backgroundColor: "#000",
     },
     image: {
-      width: '100%',
+      width: "100%",
       resizeMode: settings.imageFit,
-      backgroundColor: '#000',
+      backgroundColor: "#000",
     },
     readerStage: {
-      backgroundColor: '#000',
+      backgroundColor: "#000",
       paddingBottom: 0,
     },
     downloadButton: {
-      position: 'absolute',
+      position: "absolute",
       right: 12,
       top: 12,
-      backgroundColor: '#111',
+      backgroundColor: "#111",
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 8,
@@ -205,8 +219,16 @@ export default function ReaderScreen({ route, navigation }) {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }} onPress={() => navigation.goBack()}>
-          <Text style={{ color: '#ffffff', fontWeight: '600' }}>Back</Text>
+        <TouchableOpacity
+          style={{
+            backgroundColor: colors.primary,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 8,
+          }}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={{ color: "#ffffff", fontWeight: "600" }}>Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -215,7 +237,9 @@ export default function ReaderScreen({ route, navigation }) {
   if (images.length === 0) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={{ color: colors.textSecondary }}>No images found for this chapter.</Text>
+        <Text style={{ color: colors.textSecondary }}>
+          No images found for this chapter.
+        </Text>
       </View>
     );
   }
@@ -228,35 +252,73 @@ export default function ReaderScreen({ route, navigation }) {
         style={styles.downloadButton}
         onPress={async () => {
           try {
-            Alert.alert('Download', 'Starting download...');
-            setDlProgress({ percent: 0, filename: '' });
-            const { server, localFiles } = await downloadAndSaveChapter({ chapterUrl, source: sourceId, title }, (progress) => {
-              // progress: { index, loaded, total, percent, filename }
-              setDlProgress(progress);
-            });
+            Alert.alert("Download", "Starting download...");
+            setDlProgress({ percent: 0, filename: "" });
+            const { server, localFiles } = await downloadAndSaveChapter(
+              { chapterUrl, source: sourceId, title },
+              (progress) => {
+                // progress: { index, loaded, total, percent, filename }
+                setDlProgress(progress);
+              },
+            );
             if (localFiles && localFiles.length) {
-              Alert.alert('Download complete', `Saved ${localFiles.length} files to device storage.`);
+              Alert.alert(
+                "Download complete",
+                `Saved ${localFiles.length} files to device storage.`,
+              );
             } else if (server && server.files && server.files.length) {
-              Alert.alert('Download complete', `Server saved ${server.files.length} files, but device save failed.`);
+              Alert.alert(
+                "Download complete",
+                `Server saved ${server.files.length} files, but device save failed.`,
+              );
             } else {
-              Alert.alert('Download', 'No files were saved.');
+              Alert.alert("Download", "No files were saved.");
             }
           } catch (e) {
-            console.error('Download failed', e);
-            Alert.alert('Download failed', e?.message || 'Unknown error');
+            console.error("Download failed", e);
+            Alert.alert("Download failed", e?.message || "Unknown error");
           } finally {
             setDlProgress(null);
           }
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Download</Text>
+        <Text style={{ color: "#fff", fontWeight: "600" }}>Download</Text>
       </TouchableOpacity>
 
       {dlProgress ? (
-        <View style={{ position: 'absolute', right: 12, top: 56, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontSize: 12 }}>{dlProgress.filename || 'Downloading...'} {dlProgress.percent ? `${Math.round(dlProgress.percent * 100)}%` : ''}</Text>
-          <View style={{ width: 120, height: 6, backgroundColor: '#222', borderRadius: 6, marginTop: 6 }}>
-            <View style={{ width: `${Math.round((dlProgress.percent || 0) * 100)}%`, height: '100%', backgroundColor: '#30a14e', borderRadius: 6 }} />
+        <View
+          style={{
+            position: "absolute",
+            right: 12,
+            top: 56,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            padding: 8,
+            borderRadius: 8,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 12 }}>
+            {dlProgress.filename || "Downloading..."}{" "}
+            {dlProgress.percent
+              ? `${Math.round(dlProgress.percent * 100)}%`
+              : ""}
+          </Text>
+          <View
+            style={{
+              width: 120,
+              height: 6,
+              backgroundColor: "#222",
+              borderRadius: 6,
+              marginTop: 6,
+            }}
+          >
+            <View
+              style={{
+                width: `${Math.round((dlProgress.percent || 0) * 100)}%`,
+                height: "100%",
+                backgroundColor: "#30a14e",
+                borderRadius: 6,
+              }}
+            />
           </View>
         </View>
       ) : null}
@@ -267,8 +329,14 @@ export default function ReaderScreen({ route, navigation }) {
         contentContainerStyle={styles.readerStage}
         showsVerticalScrollIndicator={false}
         onScroll={({ nativeEvent }) => {
+          if (isOfflineMode) {
+            return;
+          }
           const offsetY = nativeEvent.contentOffset?.y || 0;
-          const pageIndex = Math.max(0, Math.round(offsetY / (Math.max(1, height))));
+          const pageIndex = Math.max(
+            0,
+            Math.round(offsetY / Math.max(1, height)),
+          );
           if (lastSavedPageRef.current === pageIndex) return;
           lastSavedPageRef.current = pageIndex;
           if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -289,8 +357,12 @@ export default function ReaderScreen({ route, navigation }) {
         scrollEventThrottle={200}
       >
         {images.map((item, index) => {
-          const size = imageSizes[item.url] || { width: width, height: Math.round(width * 1.5) };
-          const aspectRatio = size.width && size.height ? size.width / size.height : 0.7;
+          const size = imageSizes[item.url] || {
+            width: width,
+            height: Math.round(width * 1.5),
+          };
+          const aspectRatio =
+            size.width && size.height ? size.width / size.height : 0.7;
           const imageHeight = Math.round(width / aspectRatio);
 
           return (
