@@ -1,7 +1,7 @@
 import { Manhwa, Chapter, Extension, SourceInfo, ExtensionStats, SourceCatalogResponse, SourceSearchGroup } from '../types';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useSettingsStore } from '../store';
 
 function normalizeUrl(url: string): string {
