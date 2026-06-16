@@ -446,7 +446,7 @@ export async function downloadAndSaveChapter(
 
   const downloadOne = async (remoteUrl: string, localPath: string, index: number) => {
     const filename = localPath.split('/').pop() || `page-${index + 1}`;
-    const resumable = FileSystem.createDownloadResumable(remoteUrl, localPath, {}, (event) => {
+    const resumable = FileSystem.createDownloadResumable(remoteUrl, localPath, {}, (event: any) => {
       const total = event.totalBytesExpectedToWrite || 0;
       const loaded = event.totalBytesWritten || 0;
       onProgress?.({
@@ -498,14 +498,14 @@ export async function listOfflineDownloads(): Promise<OfflineDownloadEntry[]> {
   const baseInfo = await FileSystem.getInfoAsync(OFFLINE_DOWNLOADS_DIR);
   if (!baseInfo.exists) return [];
 
-  const dirs = await FileSystem.readDirectoryAsync(OFFLINE_DOWNLOADS_DIR);
+  const dirs: string[] = await FileSystem.readDirectoryAsync(OFFLINE_DOWNLOADS_DIR);
   const entries = await Promise.all(
-    dirs.map(async (dirName) => {
+    dirs.map(async (dirName: string) => {
       const dirPath = `${OFFLINE_DOWNLOADS_DIR}${dirName}/`;
-      const names = await FileSystem.readDirectoryAsync(dirPath).catch(() => []);
+      const names: string[] = await FileSystem.readDirectoryAsync(dirPath).catch(() => []);
       let size = 0;
       const files = await Promise.all(
-        names.map(async (name) => {
+        names.map(async (name: string): Promise<OfflineDownloadFile> => {
           const uri = `${dirPath}${name}`;
           const info = await FileSystem.getInfoAsync(uri);
           const fileSize = info.exists && 'size' in info ? info.size ?? 0 : 0;
@@ -519,10 +519,12 @@ export async function listOfflineDownloads(): Promise<OfflineDownloadEntry[]> {
         })
       );
 
-      const sortedFiles = files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-      const thumbnail = sortedFiles.find((file) => isThumbnailFileName(file.name))?.uri ?? sortedFiles[0]?.uri ?? null;
+      const sortedFiles = files.sort((a: OfflineDownloadFile, b: OfflineDownloadFile) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true })
+      );
+      const thumbnail = sortedFiles.find((file: OfflineDownloadFile) => isThumbnailFileName(file.name))?.uri ?? sortedFiles[0]?.uri ?? null;
       const lastModified = sortedFiles.reduce<number | null>(
-        (latest, file) =>
+        (latest: number | null, file: OfflineDownloadFile) =>
           file.modificationTime && (!latest || file.modificationTime > latest) ? file.modificationTime : latest,
         null
       );
@@ -530,7 +532,7 @@ export async function listOfflineDownloads(): Promise<OfflineDownloadEntry[]> {
       return {
         id: dirName,
         name: dirName,
-        count: sortedFiles.filter((file) => !isThumbnailFileName(file.name)).length,
+        count: sortedFiles.filter((file: OfflineDownloadFile) => !isThumbnailFileName(file.name)).length,
         size,
         files: sortedFiles,
         thumbnail,
@@ -539,7 +541,7 @@ export async function listOfflineDownloads(): Promise<OfflineDownloadEntry[]> {
     })
   );
 
-  return entries.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
+  return entries.sort((a: OfflineDownloadEntry, b: OfflineDownloadEntry) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
 }
 
 export async function deleteOfflineDownload(title: string) {
