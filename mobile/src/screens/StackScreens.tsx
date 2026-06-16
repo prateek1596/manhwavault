@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Image, ScrollView, TouchableOpacity,
   FlatList, TextInput, StyleSheet, Alert,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAppTheme } from '../theme';
 import { useLibraryStore, useSettingsStore } from '../store';
 import { LoadingSpinner, Chip, ManhwaCard, EmptyState } from '../components';
