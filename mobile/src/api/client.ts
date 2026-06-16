@@ -1,6 +1,7 @@
 import { Manhwa, Chapter, Extension, SourceInfo, ExtensionStats, SourceCatalogResponse, SourceSearchGroup } from '../types';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system';
 import { useSettingsStore } from '../store';
 
 function normalizeUrl(url: string): string {
@@ -363,6 +364,190 @@ export const getChapters = (manhwaUrl: string, source: string) =>
 
 export const getChapterImages = (chapterUrl: string, source: string) =>
   request<string[]>(`/chapter/images?url=${encodeURIComponent(chapterUrl)}&source=${source}`);
+
+export interface DownloadProgress {
+  title: string;
+  index: number;
+  loaded?: number;
+  total?: number;
+  percent: number | null;
+  filename: string;
+  attempt?: number;
+  error?: boolean;
+}
+
+export interface OfflineDownloadFile {
+  name: string;
+  uri: string;
+  size: number;
+  modificationTime?: number;
+}
+
+export interface OfflineDownloadEntry {
+  id: string;
+  name: string;
+  count: number;
+  size: number;
+  files: OfflineDownloadFile[];
+  thumbnail: string | null;
+  lastModified: number | null;
+}
+
+export const OFFLINE_DOWNLOADS_DIR = `${FileSystem.documentDirectory ?? ''}manhwavault/offline/`;
+
+function sanitizeLocalFileName(url: string, index: number): string {
+  const rawName = decodeURIComponent(url.split('/').pop()?.split('?')[0] || '');
+  const cleanName = rawName.replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-');
+  return cleanName || `page-${String(index + 1).padStart(3, '0')}.jpg`;
+}
+
+function isThumbnailFileName(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return normalized === 'thumb.jpg' || normalized === 'thumb_small.jpg' || normalized === 'thumb.webp';
+}
+
+function resolveFileUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const baseUrl = getActiveApiBaseUrl();
+  return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+export const downloadChapter = (params: { chapterUrl: string; source: string; title: string }) => {
+  const query = new URLSearchParams({
+    url: params.chapterUrl,
+    source: params.source,
+    title: params.title,
+  });
+  return request<{ title: string; files?: string[]; thumbs?: Record<string, string>; thumb?: string }>(
+    `/download/chapter?${query.toString()}`,
+    { method: 'POST' }
+  );
+};
+
+export const deleteDownloadedChapter = (params: { title: string }) =>
+  request<{ ok: boolean; removed: boolean }>(`/download/chapter?title=${encodeURIComponent(params.title)}`, {
+    method: 'DELETE',
+  });
+
+export async function downloadAndSaveChapter(
+  params: { chapterUrl: string; source: string; title: string },
+  onProgress?: (progress: DownloadProgress) => void
+) {
+  const server = await downloadChapter(params);
+  const files = server.files ?? [];
+  const saved: string[] = [];
+
+  if (!FileSystem.documentDirectory || files.length === 0) {
+    return { server, localFiles: saved };
+  }
+
+  const safeDir = `${OFFLINE_DOWNLOADS_DIR}${server.title}/`;
+  await FileSystem.makeDirectoryAsync(safeDir, { intermediates: true });
+
+  const downloadOne = async (remoteUrl: string, localPath: string, index: number) => {
+    const filename = localPath.split('/').pop() || `page-${index + 1}`;
+    const resumable = FileSystem.createDownloadResumable(remoteUrl, localPath, {}, (event) => {
+      const total = event.totalBytesExpectedToWrite || 0;
+      const loaded = event.totalBytesWritten || 0;
+      onProgress?.({
+        title: server.title,
+        index,
+        loaded,
+        total,
+        percent: total > 0 ? loaded / total : null,
+        filename,
+      });
+    });
+    const result = await resumable.downloadAsync();
+    return result?.uri ?? localPath;
+  };
+
+  for (let i = 0; i < files.length; i += 1) {
+    const remote = resolveFileUrl(files[i]);
+    const localPath = `${safeDir}${sanitizeLocalFileName(remote, i)}`;
+    try {
+      const uri = await downloadOne(remote, localPath, i);
+      saved.push(uri);
+    } catch (error) {
+      onProgress?.({
+        title: server.title,
+        index: i,
+        percent: null,
+        filename: localPath.split('/').pop() ?? `page-${i + 1}`,
+        error: true,
+      });
+    }
+  }
+
+  const thumbs = server.thumbs ?? {};
+  const preferredThumb = thumbs.small || thumbs.default || thumbs.webp || thumbs.large || server.thumb;
+  if (preferredThumb) {
+    try {
+      await downloadOne(resolveFileUrl(preferredThumb), `${safeDir}thumb.jpg`, -1);
+    } catch {
+      // A thumbnail is nice to have, but pages are the important offline asset.
+    }
+  }
+
+  return { server, localFiles: saved };
+}
+
+export async function listOfflineDownloads(): Promise<OfflineDownloadEntry[]> {
+  if (!FileSystem.documentDirectory) return [];
+
+  const baseInfo = await FileSystem.getInfoAsync(OFFLINE_DOWNLOADS_DIR);
+  if (!baseInfo.exists) return [];
+
+  const dirs = await FileSystem.readDirectoryAsync(OFFLINE_DOWNLOADS_DIR);
+  const entries = await Promise.all(
+    dirs.map(async (dirName) => {
+      const dirPath = `${OFFLINE_DOWNLOADS_DIR}${dirName}/`;
+      const names = await FileSystem.readDirectoryAsync(dirPath).catch(() => []);
+      let size = 0;
+      const files = await Promise.all(
+        names.map(async (name) => {
+          const uri = `${dirPath}${name}`;
+          const info = await FileSystem.getInfoAsync(uri);
+          const fileSize = info.exists && 'size' in info ? info.size ?? 0 : 0;
+          size += fileSize;
+          return {
+            name,
+            uri,
+            size: fileSize,
+            modificationTime: info.exists && 'modificationTime' in info ? info.modificationTime : undefined,
+          };
+        })
+      );
+
+      const sortedFiles = files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      const thumbnail = sortedFiles.find((file) => isThumbnailFileName(file.name))?.uri ?? sortedFiles[0]?.uri ?? null;
+      const lastModified = sortedFiles.reduce<number | null>(
+        (latest, file) =>
+          file.modificationTime && (!latest || file.modificationTime > latest) ? file.modificationTime : latest,
+        null
+      );
+
+      return {
+        id: dirName,
+        name: dirName,
+        count: sortedFiles.filter((file) => !isThumbnailFileName(file.name)).length,
+        size,
+        files: sortedFiles,
+        thumbnail,
+        lastModified,
+      };
+    })
+  );
+
+  return entries.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
+}
+
+export async function deleteOfflineDownload(title: string) {
+  await Promise.allSettled([
+    deleteDownloadedChapter({ title }),
+    FileSystem.deleteAsync(`${OFFLINE_DOWNLOADS_DIR}${title}`, { idempotent: true }),
+  ]);
+}
 
 // ── Extensions ───────────────────────────────────────────────────────────────
 
