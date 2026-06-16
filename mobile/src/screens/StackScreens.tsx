@@ -390,7 +390,7 @@ export function ExtensionSourceScreen({ route, navigation }: any) {
   );
 }
 
-export function DownloadsScreen({ navigation }: any) {
+function LegacyDownloadsScreen({ navigation }: any) {
   const theme = useAppTheme();
   const entries = useLibraryStore((s) => s.entries);
   const toggleDownloaded = useLibraryStore((s) => s.toggleDownloaded);
