@@ -470,6 +470,202 @@ function LegacyDownloadsScreen({ navigation }: any) {
   );
 }
 
+export function DownloadsScreen({ navigation }: any) {
+  const theme = useAppTheme();
+  const [items, setItems] = useState<api.OfflineDownloadEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      setItems(await api.listOfflineDownloads());
+    } catch (error: any) {
+      Alert.alert('Downloads unavailable', error?.message ?? 'Unable to read offline downloads.');
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  const totalBytes = useMemo(() => items.reduce((sum, item) => sum + item.size, 0), [items]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  };
+
+  const pageFiles = (item: api.OfflineDownloadEntry) =>
+    item.files
+      .filter((file) => !file.name.toLowerCase().startsWith('thumb.'))
+      .map((file) => file.uri);
+
+  const openItem = (item: api.OfflineDownloadEntry) => {
+    const files = pageFiles(item);
+    if (files.length === 0) {
+      Alert.alert('No pages found', 'This offline chapter does not contain readable page files.');
+      return;
+    }
+
+    navigation.navigate('Reader', {
+      manhwa: {
+        id: `offline-${item.id}`,
+        title: item.name,
+        url: item.id,
+        cover: item.thumbnail ?? '',
+        latestChapter: item.name,
+        source: 'Offline',
+      },
+      chapter: {
+        id: item.id,
+        title: item.name,
+        url: item.id,
+        number: 0,
+      },
+      chapterList: [],
+      localFiles: files,
+      offlineTitle: item.name,
+    });
+  };
+
+  const deleteItem = (item: api.OfflineDownloadEntry) => {
+    Alert.alert('Delete download', `Delete "${item.name}" from this device?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setBusyId(item.id);
+          try {
+            await api.deleteOfflineDownload(item.id);
+            await refresh();
+          } catch (error: any) {
+            Alert.alert('Delete failed', error?.message ?? 'Unable to delete this download.');
+          } finally {
+            setBusyId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const clearAll = () => {
+    if (items.length === 0) return;
+
+    Alert.alert('Clear downloads', `Delete ${items.length} offline chapter${items.length === 1 ? '' : 's'}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete all',
+        style: 'destructive',
+        onPress: async () => {
+          setBusyId('all');
+          try {
+            for (const item of items) {
+              await api.deleteOfflineDownload(item.id);
+            }
+            await refresh();
+          } catch (error: any) {
+            Alert.alert('Clear failed', error?.message ?? 'Unable to clear every download.');
+          } finally {
+            setBusyId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+        <LoadingSpinner />
+      </View>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+        <EmptyState
+          icon="Download"
+          title="No offline chapters"
+          subtitle="Open a chapter, use Download in the reader menu, then come back here."
+          action={{ label: 'Browse', onPress: () => navigation.navigate('Tabs') }}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+      <View style={styles.downloadsHeader}>
+        <Text style={[styles.downloadsCount, { color: theme.colors.textSecondary }]}>
+          {items.length} chapter{items.length === 1 ? '' : 's'} - {formatBytes(totalBytes)}
+        </Text>
+        <TouchableOpacity
+          style={[styles.downloadsClearBtn, { borderColor: theme.colors.border }]}
+          onPress={clearAll}
+          disabled={busyId === 'all'}
+        >
+          <Text style={[styles.downloadsClearText, { color: theme.colors.textSecondary }]}>
+            {busyId === 'all' ? 'Clearing...' : 'Clear all'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.downloadsList}
+        renderItem={({ item }) => (
+          <View style={[styles.downloadCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <TouchableOpacity onPress={() => openItem(item)}>
+              <View style={styles.downloadCardRow}>
+                {item.thumbnail ? (
+                  <Image source={{ uri: item.thumbnail }} style={styles.downloadCover} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.downloadCover, styles.downloadCoverPlaceholder, { backgroundColor: theme.colors.surfaceVariant }]}>
+                    <Text style={[styles.downloadCoverText, { color: theme.colors.textMuted }]}>Offline</Text>
+                  </View>
+                )}
+                <View style={styles.downloadMeta}>
+                  <Text style={[styles.downloadTitle, { color: theme.colors.text }]} numberOfLines={2}>{item.name}</Text>
+                  <Text style={[styles.downloadSub, { color: theme.colors.textMuted }]} numberOfLines={1}>{item.count} pages</Text>
+                  <Text style={[styles.downloadSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>{formatBytes(item.size)}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+            <View style={styles.downloadActionsRow}>
+              <TouchableOpacity
+                style={[styles.downloadActionBtn, { borderColor: theme.colors.border }]}
+                onPress={() => openItem(item)}
+              >
+                <Text style={[styles.downloadActionText, { color: theme.colors.textSecondary }]}>Read</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.downloadActionBtn, { borderColor: theme.colors.border }]}
+                onPress={() => deleteItem(item)}
+                disabled={busyId === item.id}
+              >
+                <Text style={[styles.downloadActionText, { color: theme.colors.danger }]}>
+                  {busyId === item.id ? 'Deleting...' : 'Delete'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   hero: { height: 220, position: 'relative', marginBottom: 8 },
