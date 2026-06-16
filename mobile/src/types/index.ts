@@ -92,7 +92,7 @@ export type RootTabParamList = {
 export type RootStackParamList = {
   Tabs: undefined;
   ManhwaDetail: { manhwa: Manhwa };
-  Reader: { manhwa: Manhwa; chapter: Chapter; chapterList: Chapter[] };
+  Reader: { manhwa: Manhwa; chapter: Chapter; chapterList: Chapter[]; localFiles?: string[]; offlineTitle?: string };
   InstallExtension: undefined;
   ExtensionSource: { sourceName: string; initialQuery?: string };
   Downloads: undefined;

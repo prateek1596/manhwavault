@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, FlatList, Image, TouchableOpacity, TouchableWithoutFeedback,
-  Dimensions, StyleSheet, StatusBar, useWindowDimensions,
+  Dimensions, StyleSheet, StatusBar, useWindowDimensions, Alert,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -19,6 +19,8 @@ interface ReaderScreenProps {
       manhwa: Manhwa;
       chapter: Chapter;
       chapterList: Chapter[];
+      localFiles?: string[];
+      offlineTitle?: string;
     };
   };
   navigation: any;
@@ -34,25 +36,31 @@ function KeepAwakeLock() {
 export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const theme = useAppTheme();
-  const { manhwa, chapter, chapterList } = route.params;
+  const { manhwa, chapter, chapterList, localFiles = [], offlineTitle } = route.params;
   const { defaultReadingMode, keepScreenOn, imageQuality } = useSettingsStore();
-  const { setLastRead } = useLibraryStore();
+  const { setLastRead, isFollowing, follow } = useLibraryStore();
+  const offlineImages = localFiles.filter(Boolean);
+  const isOfflineMode = offlineImages.length > 0;
 
   const [mode, setMode] = useState<ReadingMode>(defaultReadingMode);
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(0);
+  const [downloadProgress, setDownloadProgress] = useState<api.DownloadProgress | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const { data: images = [], isLoading } = useQuery<string[]>({
     queryKey: ['images', chapter.url],
     queryFn: () => api.getChapterImages(chapter.url, manhwa.source),
+    enabled: !isOfflineMode,
   });
+  const readerImages = isOfflineMode ? offlineImages : images;
 
   useEffect(() => {
-    if (images.length > 0) {
+    if (readerImages.length > 0 && !isOfflineMode) {
       setLastRead(manhwa.id, chapter);
     }
-  }, [images, manhwa.id, chapter, setLastRead]);
+  }, [readerImages.length, isOfflineMode, manhwa.id, chapter, setLastRead]);
 
   const currentChapterIndex = chapterList.findIndex((c) => c.id === chapter.id);
   const prevChapter = chapterList[currentChapterIndex + 1];
@@ -64,7 +72,46 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
 
   const toggleMode = () => setMode((m) => (m === 'vertical' ? 'horizontal' : 'vertical'));
 
-  if (isLoading) {
+  const downloadCurrentChapter = async () => {
+    if (isOfflineMode || isDownloading) return;
+
+    setIsDownloading(true);
+    setDownloadProgress({
+      title: chapter.title,
+      index: 0,
+      percent: 0,
+      filename: 'Preparing...',
+    });
+
+    try {
+      const result = await api.downloadAndSaveChapter(
+        {
+          chapterUrl: chapter.url,
+          source: manhwa.source,
+          title: `${manhwa.title}-${chapter.title}`,
+        },
+        setDownloadProgress
+      );
+
+      if (!isFollowing(manhwa.id)) {
+        follow(manhwa);
+      }
+
+      Alert.alert(
+        'Download complete',
+        result.localFiles.length > 0
+          ? `Saved ${result.localFiles.length} pages for offline reading.`
+          : 'The backend prepared the chapter, but no pages were saved to this device.'
+      );
+    } catch (error: any) {
+      Alert.alert('Download failed', error?.message ?? 'Unable to download this chapter.');
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(null);
+    }
+  };
+
+  if (!isOfflineMode && isLoading) {
     return (
       <View style={[styles.screen, { backgroundColor: '#000' }]}>
         <LoadingSpinner />
@@ -72,7 +119,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
     );
   }
 
-  if (!images || images.length === 0) {
+  if (!readerImages || readerImages.length === 0) {
     return (
       <View style={[styles.screen, { backgroundColor: '#000' }]}>
         <Text style={{ color: '#fff', textAlign: 'center', marginTop: 100 }}>
@@ -105,7 +152,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
       {/* Reader */}
       {mode === 'vertical' ? (
         <VerticalReader
-          images={images}
+          images={readerImages}
           screenWidth={screenWidth}
           imageQuality={imageQuality}
           onTapPage={() => setShowControls(true)}
@@ -113,7 +160,7 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
         />
       ) : (
         <HorizontalReader
-          images={images}
+          images={readerImages}
           currentPage={currentPage}
           onPageChange={setCurrentPage}
           flatListRef={flatListRef}
@@ -134,24 +181,48 @@ export function ReaderScreen({ route, navigation }: ReaderScreenProps) {
             </TouchableOpacity>
           </View>
           <View style={styles.menuRow}>
-            <Text style={styles.menuLabel}>Quality</Text>
-            <Text style={styles.menuLabel}>{imageQuality.toUpperCase()}</Text>
+            <Text style={styles.menuLabel}>Source</Text>
+            <Text style={styles.menuLabel}>{isOfflineMode ? 'OFFLINE' : imageQuality.toUpperCase()}</Text>
           </View>
           <View style={styles.menuRow}>
-            <Text style={styles.menuLabel}>{mode === 'horizontal' ? `${currentPage + 1} / ${images.length}` : 'Scroll mode'}</Text>
+            <Text style={styles.menuLabel}>{mode === 'horizontal' ? `${currentPage + 1} / ${readerImages.length}` : 'Scroll mode'}</Text>
           </View>
+          {offlineTitle ? (
+            <View style={styles.menuRow}>
+              <Text style={styles.menuLabel} numberOfLines={1}>{offlineTitle}</Text>
+            </View>
+          ) : null}
+          {!isOfflineMode ? (
+            <View style={styles.menuRow}>
+              <TouchableOpacity
+                style={[styles.menuBtn, isDownloading ? { opacity: 0.45 } : null]}
+                onPress={downloadCurrentChapter}
+                disabled={isDownloading}
+              >
+                <Text style={styles.menuBtnText}>{isDownloading ? 'Downloading...' : 'Download'}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {downloadProgress ? (
+            <View style={styles.progressBox}>
+              <Text style={styles.progressText} numberOfLines={1}>{downloadProgress.filename}</Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round((downloadProgress.percent ?? 0) * 100)}%` }]} />
+              </View>
+            </View>
+          ) : null}
           <View style={styles.menuRow}>
             <TouchableOpacity
-              style={[styles.menuBtn, { opacity: prevChapter ? 1 : 0.35 }]}
+              style={[styles.menuBtn, { opacity: prevChapter && !isOfflineMode ? 1 : 0.35 }]}
               onPress={() => prevChapter && goToChapter(prevChapter)}
-              disabled={!prevChapter}
+              disabled={!prevChapter || isOfflineMode}
             >
               <Text style={styles.menuBtnText}>← Prev</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.menuBtn, { opacity: nextChapter ? 1 : 0.35 }]}
+              style={[styles.menuBtn, { opacity: nextChapter && !isOfflineMode ? 1 : 0.35 }]}
               onPress={() => nextChapter && goToChapter(nextChapter)}
-              disabled={!nextChapter}
+              disabled={!nextChapter || isOfflineMode}
             >
               <Text style={styles.menuBtnText}>Next →</Text>
             </TouchableOpacity>
