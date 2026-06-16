@@ -712,6 +712,8 @@ const styles = StyleSheet.create({
   downloadCard: { borderWidth: 1, borderRadius: 16, padding: 10, gap: 10 },
   downloadCardRow: { flexDirection: 'row', gap: 12 },
   downloadCover: { width: 74, height: 108, borderRadius: 10 },
+  downloadCoverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  downloadCoverText: { fontSize: 11, fontWeight: '700' },
   downloadMeta: { flex: 1, justifyContent: 'center', gap: 4 },
   downloadTitle: { fontSize: 14, fontWeight: '700', lineHeight: 20 },
   downloadSub: { fontSize: 12 },
