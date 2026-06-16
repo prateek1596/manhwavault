@@ -1,87 +1,31 @@
-# ManhwaVault
+## Contributing
 
-ManhwaVault is a multi-client manhwa reader stack with:
+Contributions are welcome.
 
-- FastAPI backend scraper API
-- React Native frontend app (`frontend/`)
-- Expo + TypeScript mobile app (`mobile/`)
-- Extension-based source scraping architecture
+### Backend Extensions
 
-## Quick Start
-
-### 1) Backend
-
-```powershell
-./run_backend.ps1
-```
-
-Backend runs on `http://127.0.0.1:8000` by default.
-
-#### Development (backend)
-
-1. Create a virtual environment and activate it:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-2. Install runtime and dev dependencies:
-
-```powershell
-pip install -r backend/requirements.txt
-pip install -r backend/requirements-dev.txt
-```
-
-3. Run the FastAPI app for development:
-
-```powershell
-cd backend
-uvicorn main:app --reload --port 8000
-```
-
-### 2) Mobile (Expo)
-
-```powershell
-./run_mobile.ps1
-```
-
-If your device cannot reach localhost, set `EXPO_PUBLIC_API_BASE_URL` for the mobile app.
-
-## API Highlights
-
-- `GET /health` - backend health + loaded extensions
-- `GET /search` - unified search
-- `GET /search/by-source` - grouped source results
-- `GET /search/suggestions` - curated/discovery suggestion feed
-- `GET /sources` - list available sources
-- `GET /source/catalog` - browse source content
-
-## Extension System
-
-Backend extensions live in `backend/extensions/*` and must include:
+Extensions live in `backend/extensions/*` and must include:
 
 - `extension.json`
-- scraper entry module (for example `scraper.py`)
+- A scraper entry module (for example, `scraper.py`)
 
-A bundled sample deterministic sources are included:
+When creating a new extension:
 
-- `backend/extensions/ext-vault-picks`
-- `backend/extensions/ext-vault-trending`
+1. Follow the existing extension structure.
+2. Ensure all required metadata is present in `extension.json`.
+3. Implement consistent error handling and fallback behavior.
+4. Verify the extension loads successfully through the `/health` endpoint.
+5. Add or update tests when applicable.
 
-These sources help with local UI/testing flows even when public sources are rate-limited.
+### Development Guidelines
 
-## Tests
+- Format and lint code before submitting changes.
+- Keep API responses consistent with existing schemas.
+- Avoid breaking changes to public endpoints without discussion.
+- Test both backend and mobile flows when modifying shared functionality.
 
-Run backend smoke tests:
+### Running Tests
 
 ```powershell
 cd backend
 pytest -q
-```
-
-## Notes
-
-- Mobile search supports grouped source mode and source-specific mode.
-- Backend normalizes fallback behavior when sources are temporarily unavailable.
-- If extensions fail to load, verify backend dependencies from `backend/requirements.txt` are installed.
