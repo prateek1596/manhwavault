@@ -437,6 +437,10 @@ const styles = StyleSheet.create({
   menuLabel: { color: '#ddd', fontSize: 12 },
   menuBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)' },
   menuBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  progressBox: { gap: 6 },
+  progressText: { color: '#ddd', fontSize: 11 },
+  progressTrack: { height: 6, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.14)' },
+  progressFill: { height: '100%', borderRadius: 6, backgroundColor: '#30a14e' },
   verticalImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.5 },
   horizontalImage: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
 });
